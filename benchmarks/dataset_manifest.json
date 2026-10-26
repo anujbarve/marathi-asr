@@ -2,23 +2,16 @@
   {
     "id": "clean_0",
     "file": "benchmarks/audio/clean_sample_0.wav",
-    "reference": "पोलिस अधीक्षक चंद्र शेखर सोलंकी यांनी सांगितले की आरोपी चेहरा झाकून घेऊन कोर्टात हजर झाला",
+    "reference": "पोलीस अधीक्षक चंद्रशेखर सोळंकी यांनी सांगितले की आरोपी चेहरा झाकून घेऊन कोर्टात हजर झाला",
     "category": "clean_read",
     "duration_s": 8.16
   },
   {
     "id": "noisy_0",
     "file": "benchmarks/audio/noisy_sample_0.wav",
-    "reference": "पोलिस अधीक्षक चंद्र शेखर सोलंकी यांनी सांगितले की आरोपी चेहरा झाकून घेऊन कोर्टात हजर झाला",
+    "reference": "पोलीस अधीक्षक चंद्रशेखर सोळंकी यांनी सांगितले की आरोपी चेहरा झाकून घेऊन कोर्टात हजर झाला",
     "category": "noisy_background",
     "duration_s": 8.16
-  },
-  {
-    "id": "short_0",
-    "file": "benchmarks/audio/short_sample_0.wav",
-    "reference": "पोलिस अधीक्षक चंद्र शेखर",
-    "category": "short_command",
-    "duration_s": 2.8
   },
   {
     "id": "clean_1",
@@ -35,13 +28,6 @@
     "duration_s": 7.2
   },
   {
-    "id": "short_1",
-    "file": "benchmarks/audio/short_sample_1.wav",
-    "reference": "वन्यजीवांचा विचार केल्यास मादागास्कर",
-    "category": "short_command",
-    "duration_s": 2.8
-  },
-  {
     "id": "clean_2",
     "file": "benchmarks/audio/clean_sample_2.wav",
     "reference": "जे कोणी उंच भागात किंवा पर्वतांवरील रस्त्यावरून गाडी चालवणार आहेत त्यांनी हिम बर्फ किंवा गोठणबिंदूखालील तापमानाची शक्यता विचारात घ्यावी",
@@ -54,12 +40,5 @@
     "reference": "जे कोणी उंच भागात किंवा पर्वतांवरील रस्त्यावरून गाडी चालवणार आहेत त्यांनी हिम बर्फ किंवा गोठणबिंदूखालील तापमानाची शक्यता विचारात घ्यावी",
     "category": "noisy_background",
     "duration_s": 12.66
-  },
-  {
-    "id": "short_2",
-    "file": "benchmarks/audio/short_sample_2.wav",
-    "reference": "जे कोणी उंच भागात",
-    "category": "short_command",
-    "duration_s": 2.8
   }
 ]

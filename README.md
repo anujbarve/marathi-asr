@@ -81,11 +81,21 @@ python3 src/cli.py benchmarks/audio/clean_sample_0.wav --model whisper-base --js
 
 ## 4. Reproducible Benchmarking
 
-To run the complete benchmark suite comparing all candidate models on clean read, noisy microphone background, and short voice commands:
+### Target hardware
+
+- The numbers in section 1 were measured on an M5 Mac and do not reflect the deployment target.
+- The deployment target is an Intel i5 8th-gen U-series laptop with 16 GB RAM and CPU-only inference.
+- Re-run the benchmark on the target before quoting latency or RTF figures.
+
+To run the benchmark for IndicConformer (default):
 ```bash
 python3 benchmarks/run_benchmark.py
 ```
-Results are saved to `benchmarks/benchmark_results.csv`.
+To include the Whisper baselines (slow on CPU, opt-in):
+```bash
+python3 benchmarks/run_benchmark.py --models indicconformer-mr-int8 whisper-tiny whisper-base whisper-small
+```
+Results are saved to `benchmarks/benchmark_results.csv`. Each run records `platform.processor()` and `os.cpu_count()` in its output.
 
 ---
 

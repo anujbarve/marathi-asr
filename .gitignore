@@ -1,0 +1,19 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Audio/large local cache
+.cache/
+benchmarks/audio/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

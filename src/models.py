@@ -3,6 +3,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import numpy as np
+from src.audio_utils import condition_audio
 
 class BaseMarathiASR(ABC):
     """
@@ -79,6 +80,7 @@ class IndicConformerONNXASR(BaseMarathiASR):
     def transcribe(self, audio_data: np.ndarray, sample_rate: int = 16000) -> str:
         if self._recognizer is None:
             self.load()
+        audio_data = condition_audio(audio_data, sample_rate)
         stream = self._recognizer.create_stream()
         stream.accept_waveform(sample_rate, audio_data)
         self._recognizer.decode_stream(stream)

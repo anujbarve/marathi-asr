@@ -1,10 +1,20 @@
 import soundfile as sf
 import numpy as np
+import soxr
+
+def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    """
+    Resamples a mono float array to target_sr with soxr (anti-aliased, HQ).
+    Returns the input unchanged when the rates already match.
+    """
+    if orig_sr == target_sr:
+        return samples
+    return soxr.resample(samples, orig_sr, target_sr, quality="HQ").astype(np.float32)
 
 def load_and_resample(file_path: str, target_sr: int = 16000) -> tuple[np.ndarray, float]:
     """
     Loads an audio file, converts stereo to mono if needed,
-    and resamples to target_sr using linear interpolation if required.
+    and resamples to target_sr using soxr if required.
     Returns:
         samples: np.ndarray (float32, 1D array)
         duration_s: float
@@ -17,10 +27,7 @@ def load_and_resample(file_path: str, target_sr: int = 16000) -> tuple[np.ndarra
         
     # Resample if sample rate differs
     if sr != target_sr:
-        num_target_samples = int(round(len(data) * float(target_sr) / sr))
-        orig_indices = np.linspace(0, len(data) - 1, len(data))
-        target_indices = np.linspace(0, len(data) - 1, num_target_samples)
-        data = np.interp(target_indices, orig_indices, data).astype(np.float32)
+        data = resample(data, sr, target_sr)
         sr = target_sr
         
     duration_s = len(data) / float(sr)

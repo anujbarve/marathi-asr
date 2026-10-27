@@ -42,15 +42,15 @@
 - Test: `tests/test_memguard.py`
 
 **Interfaces:**
-- Produces: `run_guarded(cmd: list[str], *, rss_limit_mb: int, min_free_mb: int, max_swap_growth_mb: int = 64, poll_s: float = 0.2) -> GuardResult`. `GuardResult` is a dataclass: `returncode: int`, `peak_rss_mb: float`, `swap_before_mb: float`, `swap_after_mb: float`, `killed: bool`, `reason: str | None`. RSS is the sum over the child and its descendants (`psutil`). Refuses to start (`reason="insufficient free memory"`, `returncode=-1`) when `psutil.virtual_memory().available` is below `min_free_mb`. Kills the tree when RSS passes `rss_limit_mb` (`reason="rss limit"`). Sets `reason="swap growth"` when swap used grew more than the limit.
+- Produces: `run_guarded(cmd: list[str], *, rss_limit_mb: int, min_free_mb: int, max_swap_growth_mb: int = 64, poll_s: float = 0.2) -> GuardResult`. Before the free-memory check it takes an exclusive lock on `work_dir()/model.lock` (`~/.cache/maya_fast/model.lock`, `MAYA_FAST_WORK` overrides the directory) with `fcntl.flock`, blocking, printing `MEMGUARD waiting for model lock <path>` to stderr while it waits, and holds the lock until the child exits — so only one model process runs at a time across agents. `GuardResult` is a dataclass: `returncode: int`, `peak_rss_mb: float`, `swap_before_mb: float`, `swap_after_mb: float`, `killed: bool`, `reason: str | None`. RSS is the sum over the child and its descendants (`psutil`). Refuses to start (`reason="insufficient free memory"`, `returncode=-1`) when `psutil.virtual_memory().available` is below `min_free_mb`. Kills the tree when RSS passes `rss_limit_mb` (`reason="rss limit"`). Sets `reason="swap growth"` when swap used grew more than the limit.
 - Produces: CLI `python tools/memguard.py --rss-limit-mb N --min-free-mb M -- <cmd...>`; prints one line `MEMGUARD peak_rss_mb=... swap_delta_mb=... reason=...`; exits non-zero on any violation.
 
-- [ ] **Step 1: Branch.** `git checkout main && git checkout -b feat/maya-fast-runtime`.
-- [ ] **Step 2: Write failing tests** `test_kills_on_rss_limit` (child allocates 300 MB with `bytearray`, limit 100 → `killed and reason == "rss limit"`), `test_refuses_when_not_enough_free` (`min_free_mb` = total RAM + 1 → `returncode == -1`), `test_clean_run_reports_peak` (child allocates 50 MB, limit 500 → `returncode == 0`, `peak_rss_mb >= 40`).
-- [ ] **Step 3: Run** `.venv/bin/python -m unittest tests/test_memguard.py -v`. Expected: FAIL, module not found.
-- [ ] **Step 4: Implement `tools/memguard.py`.**
-- [ ] **Step 5: Run the tests.** Expected: 3 PASS.
-- [ ] **Step 6: Commit** `feat(tools): add memory guard that blocks swap during model runs`.
+- [x] **Step 1: Branch.** `git checkout main && git checkout -b feat/maya-fast-runtime` (Agent A: `feat/maya-fast-export` from `main`).
+- [x] **Step 2: Write failing tests** `test_kills_on_rss_limit` (child allocates 300 MB with `bytearray`, limit 100 → `killed and reason == "rss limit"`), `test_refuses_when_not_enough_free` (`min_free_mb` = total RAM + 1 → `returncode == -1`), `test_clean_run_reports_peak` (child allocates 50 MB, limit 500 → `returncode == 0`, `peak_rss_mb >= 40`), `test_lock_serializes_runs` (two `run_guarded` calls started together from two threads, each child appending `S`/`E` markers around a 0.7 s sleep → both `returncode == 0` and the marker sequence never shows two live children).
+- [x] **Step 3: Run** `.venv/bin/python -m unittest tests/test_memguard.py -v`. Expected: FAIL, module not found.
+- [x] **Step 4: Implement `tools/memguard.py`.**
+- [x] **Step 5: Run the tests.** Expected: 3 PASS.
+- [x] **Step 6: Commit** `feat(tools): add memory guard that blocks swap during model runs`.
 
 ---
 

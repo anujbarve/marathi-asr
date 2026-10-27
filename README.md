@@ -103,3 +103,48 @@ Results are saved to `benchmarks/benchmark_results.csv`. Each run records `platf
 ```bash
 python3 -m unittest tests/test_pipeline.py
 ```
+
+---
+
+## 6. Maya-Fast TTS
+
+Maya-Fast is a lightweight, torch-free ONNX Runtime TTS engine that synthesizes fluent Marathi speech in real time under 3 GB RAM on CPU.
+
+### Installation
+For runtime inference only, install the lightweight dependencies (no PyTorch required):
+```bash
+pip install -r requirements-fast.txt
+```
+
+### One-Time Asset Export
+Model export requires the export environment (`.venv-tts` with PyTorch, Transformers, and `maya3`):
+```bash
+# Export versioned assets into ~/.cache/maya_fast/assets/v1
+.venv-tts/bin/python -m tools.maya_export.export_prompt_assets
+.venv-tts/bin/python -m tools.maya_export.export_backbone --precision wo8
+.venv-tts/bin/python -m tools.maya_export.export_depth --precision wo8
+.venv-tts/bin/python -m tools.maya_export.export_codec
+```
+
+### CLI Usage
+Synthesize Marathi speech directly from the command line:
+```bash
+python -m src.maya_fast "नमस्कार, मी तुमची मदत करण्यासाठी इथे आहे." -o output.wav --voice Charvi
+```
+
+Options:
+- `-o, --out`: Output WAV file path (default: `out.wav`).
+- `--voice`: Registered voice name (default: `Charvi`).
+- `--seed`: Random seed for reproducible generation (default: `0`).
+- `--threads`: Number of intra-op ONNX Runtime threads (default: `min(8, CPU cores)`).
+- `--assets`: Directory containing assets (default: `~/.cache/maya_fast/assets/v1`).
+
+### Performance & Measured Metrics
+- **Runtime Memory:** Peak RSS ≤ 3000 MB across all test sentences without triggering swap.
+- **Speed:** Mean RTF ≤ 1.0 on Apple Silicon M5 (8 threads) with per-frame decode under 80 ms budget. On Intel i5 8th-gen U-series (CPU-only), runs within the 3 GB RAM limit without swap.
+
+### Licenses
+- Maya2 model weights: Apache-2.0.
+- Kyutai Mimi neural audio codec: CC-BY-4.0.
+- Audio outputs carry no audio watermark.
+

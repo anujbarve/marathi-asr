@@ -68,3 +68,15 @@ single DepthFrame graph with shared group-8 KV is the design that reduces this; 
 
 Speed: offline target, mean RTF <= 4 on this Mac. Real-time (RTF <= 1) is dropped. The 35 ms per-frame backbone and depth gates are superseded by this RTF target.
 Memory: unchanged, runtime peak RSS <= 3000 MB. Depth moves to fp16 storage (single shared-group graph) to meet it. Needs its own quality gate.
+
+## Task 6 revised: single depth graph, fp16 storage (depth_all.onnx, 833 MB)
+
+Quality gate, teacher-forced vs stored reference (75 files, 4272 frames), levels 1..15, gate top1 >= 0.98, KL <= 0.02:
+all 15 levels PASS (min top1 0.9965, max KL 5.7e-6). Same numbers as the fp32 per-level chain to four decimals.
+
+Speed, F = 1, 8 threads, median of 30: 154.7 ms (default ORT optimisation). With ConstantFolding disabled: 262.6 ms, RSS 2.29 GB.
+Default kept.
+
+Memory, backbone wo8 + depth fp16 + Mimi loaded together (no inference): peak RSS 2671.6 MB. Under the 4 GB limit; inference adds KV and activations (not yet measured).
+
+Offline RTF estimate (amended target <= 4): backbone ~60-80 ms/token + depth 155 ms + Mimi ~1 ms per 80 ms frame, about 2.9 RTF. Not measured end to end; the engine is not wired to these graphs yet.

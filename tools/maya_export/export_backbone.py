@@ -88,14 +88,17 @@ def _export(module: nn.Module, args: tuple, path: Path, **kw) -> None:
 
 
 def _save_external(model: onnx.ModelProto, path: Path) -> None:
+    # onnx appends to an existing data file; remove it so a rebuild does not leave stale bytes behind
+    path.with_name(path.name + ".data").unlink(missing_ok=True)
     onnx.save_model(model, str(path), save_as_external_data=True, all_tensors_to_one_file=True,
                     location=path.name + ".data", size_threshold=0)
 
 
-def _quantize_wo8(model: onnx.ModelProto) -> onnx.ModelProto:
+def _quantize_wo8(model: onnx.ModelProto, exclude: list[str] | None = None) -> onnx.ModelProto:
     from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 
-    q = MatMulNBitsQuantizer(model, bits=8, block_size=32, is_symmetric=True, accuracy_level=4)
+    q = MatMulNBitsQuantizer(model, bits=8, block_size=32, is_symmetric=True, accuracy_level=4,
+                             nodes_to_exclude=exclude or [])
     q.process()
     return q.model.model
 

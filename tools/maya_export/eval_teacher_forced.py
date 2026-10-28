@@ -26,11 +26,15 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding
 
 from tools.maya_export import export_backbone as EB
 from tools.maya_export.common import ckpt_paths, work_dir
+from tools.maya_export.export_depth import N_LEVELS as DEPTH_LEVELS
+from tools.maya_export.streamed_backbone import _Weights, shard_files
 
 N_LAYERS = EB.N_LAYERS
 TEMP = 0.7
 TOP1_GATE = 0.99
 KL_GATE = 0.01
+DEPTH_TOP1_GATE = 0.98
+DEPTH_KL_GATE = 0.02
 
 
 def _sess(path: Path, threads: int = 8) -> ort.InferenceSession:
@@ -139,10 +143,46 @@ def backbone(candidate: str) -> dict:
     return result
 
 
+def depth(candidate: str) -> dict:
+    """Per-level depth gate. Candidate: per-level graphs (depth_build/{candidate}); one level resident at a time,
+    every file run through it. Reference: the stored depth_logits (fp16) of the corpus."""
+    ref_dir = work_dir() / "golden" / "ref"
+    items = []
+    for path in sorted(glob.glob(str(ref_dir / "*_s*.npz"))):
+        with np.load(path) as z:
+            items.append({"codes": z["codes"].T.astype(np.int64), "h": z["h_frames"].astype(np.float32),
+                          "ref": z["depth_logits"].astype(np.float32)})
+    mem_w = _Weights(shard_files(ckpt_paths()["ckpt"]))
+    null_mem = mem_w.get("depth.null_mem").float().numpy().reshape(1, 1, 1024)
+    build = work_dir() / "depth_build" / candidate
+    per_top1, per_kl = [], []
+    for level in range(1, DEPTH_LEVELS + 1):
+        sess = _sess(build / f"level_{level:02d}.onnx", threads=8)
+        hits, total, kl_sum = 0, 0, 0.0
+        for it in items:
+            F = it["h"].shape[0]
+            mem = np.repeat(null_mem, F, axis=0)
+            got = sess.run(None, {"h": it["h"], "codes": it["codes"], "mem": mem})[0]
+            want = it["ref"][:, level - 1]
+            hits += int((got.argmax(-1) == want.argmax(-1)).sum())
+            total += F
+            p = _softmax(want, TEMP)
+            q = _softmax(got, TEMP)
+            kl_sum += float(np.sum(p * (np.log(p + 1e-30) - np.log(q + 1e-30))))
+        del sess
+        per_top1.append(hits / total)
+        per_kl.append(kl_sum / total)
+    passes = [t >= DEPTH_TOP1_GATE and k <= DEPTH_KL_GATE for t, k in zip(per_top1, per_kl)]
+    return {"candidate": candidate, "frames": total, "files": len(items),
+            "top1_per_level": per_top1, "kl_per_level": per_kl,
+            "gate": {"top1>=": DEPTH_TOP1_GATE, "kl<=": DEPTH_KL_GATE},
+            "pass_per_level": passes, "pass": all(passes)}
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("target", choices=["backbone"])
-    ap.add_argument("--candidate", choices=["wo8", "fp32"], required=True)
+    ap.add_argument("target", choices=["backbone", "depth"])
+    ap.add_argument("--candidate", choices=["wo8", "wo8_fph", "fp32"], required=True)
     a = ap.parse_args()
-    res = backbone(a.candidate)
+    res = backbone(a.candidate) if a.target == "backbone" else depth(a.candidate)
     print(json.dumps(res, indent=2))

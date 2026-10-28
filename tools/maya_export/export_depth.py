@@ -14,7 +14,7 @@ from tts.tokens import N_Q
 
 from tools.maya_export.common import ckpt_paths, work_dir
 from tools.maya_export.depth_frame import DepthLevel, Q_SERVE
-from tools.maya_export.export_backbone import D_MODEL, _export, _save_external
+from tools.maya_export.export_backbone import D_MODEL, _export, _quantize_wo8, _save_external
 from tools.maya_export.streamed_backbone import _Weights, shard_files
 
 D_DEPTH = 1024
@@ -31,7 +31,16 @@ def ckpt_name(name: str, level: int) -> str:
     return f"depth.{name}"
 
 
-def export_level(level: int, weights: _Weights, build) -> None:
+def _head_nodes(model) -> list[str]:
+    """Names of the node(s) producing the `logits` output (the level head's MatMul): kept in fp32 for wo8_fph."""
+    names = []
+    for node in model.graph.node:
+        if "logits" in node.output:
+            names.append(node.name)
+    return names
+
+
+def export_level(level: int, weights: _Weights, build, precision: str) -> None:
     mod = DepthLevel(level).eval()
     state = {name: weights.get(ckpt_name(name, level)).float() for name, _ in mod.named_parameters()}
     mod.load_state_dict(state, strict=True)
@@ -44,19 +53,29 @@ def export_level(level: int, weights: _Weights, build) -> None:
             dynamic_axes={"h": {0: "B"}, "codes": {0: "B"}, "mem": {0: "B"}, "logits": {0: "B"}})
     import onnx
 
-    _save_external(onnx.load(str(tmp)), build / f"level_{level:02d}.onnx")
+    model = onnx.load(str(tmp))
+    if precision == "wo8":
+        model = _quantize_wo8(model)
+    elif precision == "wo8_fph":  # int8 trunks, fp32 head
+        model = _quantize_wo8(model, exclude=_head_nodes(model))
+    _save_external(model, build / f"level_{level:02d}.onnx")
     tmp.unlink()
     tmp.with_suffix(".onnx.data").unlink(missing_ok=True)
     del mod
 
 
 def main() -> None:
-    build = work_dir() / "depth_build" / "fp32"
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--precision", choices=("fp32", "wo8", "wo8_fph"), default="fp32")
+    precision = ap.parse_args().precision
+    build = work_dir() / "depth_build" / precision
     build.mkdir(parents=True, exist_ok=True)
     paths = ckpt_paths()
     weights = _Weights(shard_files(paths["ckpt"]))
     for level in range(1, N_LEVELS + 1):
-        export_level(level, weights, build)
+        export_level(level, weights, build, precision)
         print(f"level {level:02d} fp32 ok", flush=True)
 
 

@@ -91,6 +91,7 @@ def main() -> None:
         split_chunks = S.split_text(text, lang, prior, chunk_s)
 
         json_data["sentences"][s_id] = {
+            "text": text,
             "ef": float(ef),
             "er": float(er),
             "cap": int(cap),

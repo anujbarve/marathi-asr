@@ -8,8 +8,10 @@ from __future__ import annotations
 import onnx
 import torch
 
+from tts.tokens import N_CODES
+
 from tools.maya_export.common import ckpt_paths, work_dir
-from tools.maya_export.depth_all import LEVELS, DepthAll, load_fp16
+from tools.maya_export.depth_all import LEVELS, DepthAll, DepthSample, load_fp16
 from tools.maya_export.export_backbone import D_MODEL, _save_external
 from tools.maya_export.streamed_backbone import _Weights, shard_files
 
@@ -45,6 +47,25 @@ def main() -> None:
     tmp.unlink()
     tmp.with_suffix(".onnx.data").unlink(missing_ok=True)
     print(f"wrote {out_dir / 'depth_all.onnx'} ({LEVELS} levels)", flush=True)
+
+    # sampled frame graph (the runtime's Depth.frame): inputs h, cb0, mem, noise; output codes (B, 16)
+    sample = DepthSample(model).eval()
+    # example batch 2: a batch of 1 would specialise the dynamic batch dimension
+    h = torch.randn(2, D_MODEL) * 0.02
+    cb0 = torch.zeros(2, dtype=torch.long)
+    mem = torch.zeros(2, 1, 1024)
+    noise = torch.zeros(2, LEVELS, N_CODES)
+    tmp = out_dir / "depth_frame_raw.onnx"
+    # dynamo exporter: traces symbolically, so the per-use fp32 weight copies are not held in memory
+    B = torch.export.Dim("B")
+    with torch.inference_mode():
+        prog = torch.export.export(sample, (h, cb0, mem, noise),
+                                   dynamic_shapes={"h": {0: B}, "cb0": {0: B}, "mem": {0: B}, "noise": {0: B}})
+        torch.onnx.export(prog, (), str(tmp), input_names=["h", "cb0", "mem", "noise"], output_names=["codes"])
+    _save_external(onnx.load(str(tmp)), out_dir / "depth_frame_fp16.onnx")
+    tmp.unlink()
+    tmp.with_suffix(".onnx.data").unlink(missing_ok=True)
+    print(f"wrote {out_dir / 'depth_frame_fp16.onnx'}", flush=True)
 
 
 if __name__ == "__main__":

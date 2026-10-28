@@ -91,7 +91,7 @@ def _save_external(model: onnx.ModelProto, path: Path) -> None:
     # onnx appends to an existing data file; remove it so a rebuild does not leave stale bytes behind
     path.with_name(path.name + ".data").unlink(missing_ok=True)
     onnx.save_model(model, str(path), save_as_external_data=True, all_tensors_to_one_file=True,
-                    location=path.name + ".data", size_threshold=0)
+                    location=path.name + ".data", size_threshold=1024)  # small tensors inline: ORT shape inference needs them
 
 
 def _quantize_wo8(model: onnx.ModelProto, exclude: list[str] | None = None) -> onnx.ModelProto:

@@ -17,6 +17,8 @@ from tts.model.depth_v2 import D, GROUP_OF_LEVEL, LAYERS, RANK, _CrossBlock, _Se
 from tts.tokens import N_CODES, N_Q
 
 LEVELS = 15  # serving q_serve = 16 -> levels 1..15
+TEMP = 0.7
+TOP_K = 64
 N_PRIVATE_GROUPS = 9  # groups 0..8 are used by levels 1..15
 
 
@@ -50,19 +52,45 @@ class DepthAll(nn.Module):
         e = self.code_up(self.code_lo(flat)) + self.level_emb(ks + 1)[None]
         return torch.cat([self.in_proj(h)[:, None] + self.level_emb.weight[:1], e], 1)
 
+    def _level_logits(self, h: torch.Tensor, codes_prev: torch.Tensor, level: int, mem: torch.Tensor) -> torch.Tensor:
+        """Logits of one level given the codes of the levels before it (codes_prev has `level` columns)."""
+        x = self._prefix(h, codes_prev, level)
+        T = x.shape[1]
+        mask = torch.ones(T, T, dtype=torch.bool, device=x.device).tril()[None, None]
+        group = self.groups[GROUP_OF_LEVEL[level]]
+        for li in range(LAYERS):
+            x = group[li](x, mask)
+            x = self.cross[li](x, mem, None)
+        return self.heads[level - 1](self.norm(x[:, -1]))
+
     def forward(self, h: torch.Tensor, codes: torch.Tensor, mem: torch.Tensor) -> torch.Tensor:
-        """h (B, 2048); codes (B, Q_SERVE=16) int64; mem (B, 1, 1024). Returns logits (B, 15, 2048)."""
-        out = []
+        """Teacher-forced: h (B, 2048); codes (B, Q_SERVE=16) int64; mem (B, 1, 1024). Returns logits (B, 15, 2048)."""
+        return torch.stack([self._level_logits(h, codes[:, :level], level, mem) for level in range(1, LEVELS + 1)], 1)
+
+    def sample(self, h: torch.Tensor, cb0: torch.Tensor, mem: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
+        """Sampled frame. h (B, 2048); cb0 (B,) int64; mem (B, 1, 1024); noise (B, 15, 2048) Gumbel.
+        Level L: argmax(where(rank < top_k, logits / TEMP + noise, -inf)) over logits of the previous levels' codes.
+        Returns codes (B, 16) int64, cb0 first. Gumbel-max over the top-k softmax, same distribution as upstream
+        depth_generate (torch.multinomial over the top-k softmax of logits / TEMP)."""
+        codes = [cb0]
         for level in range(1, LEVELS + 1):
-            x = self._prefix(h, codes, level)
-            T = x.shape[1]
-            mask = torch.ones(T, T, dtype=torch.bool, device=x.device).tril()[None, None]
-            group = self.groups[GROUP_OF_LEVEL[level]]
-            for li in range(LAYERS):
-                x = group[li](x, mask)
-                x = self.cross[li](x, mem, None)
-            out.append(self.heads[level - 1](self.norm(x[:, -1])))
-        return torch.stack(out, 1)
+            prev = torch.stack(codes, 1)  # (B, level)
+            scaled = self._level_logits(h, prev, level, mem) / TEMP
+            kth = scaled.topk(TOP_K, -1).values[:, -1:]
+            masked = scaled.masked_fill(scaled < kth, float("-inf"))
+            codes.append((masked + noise[:, level - 1]).argmax(-1))
+        return torch.stack(codes, 1)
+
+
+class DepthSample(nn.Module):
+    """Export wrapper: the sampled-frame graph (inputs h, cb0, mem, noise; output codes)."""
+
+    def __init__(self, depth: DepthAll) -> None:
+        super().__init__()
+        self.depth = depth
+
+    def forward(self, h, cb0, mem, noise):
+        return self.depth.sample(h, cb0, mem, noise)
 
 
 def load_fp16(model: DepthAll, get) -> None:

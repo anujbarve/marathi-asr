@@ -72,6 +72,39 @@ def _stub_lm(path: str, dtype: torch.dtype, attn: str):
     return lm
 
 
+class _UpcastFp32(torch.nn.Module):
+    """Parametrization: compute on an fp32 copy of a bf16 weight, made per call."""
+
+    def forward(self, w: torch.Tensor) -> torch.Tensor:
+        return w.float()
+
+
+class _Bf16Embedding(torch.nn.Embedding):
+    def forward(self, idx: torch.Tensor) -> torch.Tensor:
+        # Row lookup on the bf16 table, then upcast only the rows read. bf16 to fp32 is exact.
+        return torch.nn.functional.embedding(idx, self.weight).float()
+
+
+def _keep_bf16_params_fp32_compute(model: torch.nn.Module) -> None:
+    """Parameters stored as bf16 are upcast to fp32 at use, so weights stay half-size in RAM.
+    Embedding tables are read by row. Other modules get a parametrization that upcasts per call.
+    Upcasting bf16 is exact, so results match an fp32 copy of the same weights."""
+    from torch.nn.utils import parametrize
+
+    embed_weights = set()
+    for mod in model.modules():
+        if isinstance(mod, torch.nn.Embedding) and mod.weight.dtype == torch.bfloat16:
+            embed_weights.add(id(mod.weight))
+            mod.__class__ = _Bf16Embedding
+    for mod in list(model.modules()):  # snapshot: registering adds child modules
+        for pname, p in list(mod._parameters.items()):
+            if p is None or p.dtype != torch.bfloat16 or id(p) in embed_weights:
+                continue
+            if isinstance(mod, torch.nn.Embedding):
+                continue
+            parametrize.register_parametrization(mod, pname, _UpcastFp32(), unsafe=True)
+
+
 def build_light_model():
     """Build light TTSModelV2 on meta device with 0 backbone decoder layers,
     and populate non-backbone layer weights via iter_ckpt_tensors."""
@@ -104,14 +137,15 @@ def build_light_model():
             if parent is None or (leaf not in parent._parameters and leaf not in parent._buffers):
                 continue
             is_param = leaf in parent._parameters
-            t_float = t.float()
             if is_param:
-                parent._parameters[leaf] = torch.nn.Parameter(t_float, requires_grad=False)
+                # Keep the checkpoint dtype (bf16) to halve resident memory.
+                parent._parameters[leaf] = torch.nn.Parameter(t, requires_grad=False)
             else:
-                parent._buffers[leaf] = t_float
-            del t_float
+                parent._buffers[leaf] = t.float()
+            del t
 
         model.backbone.lm.tie_weights()
+        _keep_bf16_params_fp32_compute(model)
         gc.collect()
         return model.eval()
     finally:

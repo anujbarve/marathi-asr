@@ -177,42 +177,39 @@ def make_tiny_assets(assets_dir: Path, aeos_bias: float = 0.0) -> Path:
         "anchor_fc2_b": np.zeros(d, dtype=np.float32),
         "anchor_null": np.random.randn(ecapa_dim).astype(np.float32),
         "aeos": np.random.randn(d).astype(np.float32),
-        "audio_in/table": np.random.randn(n_q * n_codes, d).astype(np.float32),
         "audio_in/aeos_in": np.random.randn(d).astype(np.float32),
         "audio_in/norm": np.ones(d, dtype=np.float32),
     }
     np.savez(assets_dir / "prompt.npz", **prompt_dict)
     files_sha["prompt.npz"] = _sha256((assets_dir / "prompt.npz").read_bytes())
 
+    # audio input table, bf16 raw uint16 row-major (same layout as the real export)
+    audio_f32 = np.random.randn(n_q * n_codes, d).astype(np.float32)
+    audio_bf16 = (audio_f32.view(np.uint32) >> 16).astype("<u2")
+    (assets_dir / "audio_in_bf16.bin").write_bytes(audio_bf16.tobytes())
+    files_sha["audio_in_bf16.bin"] = _sha256((assets_dir / "audio_in_bf16.bin").read_bytes())
+
     # 3. voices.json + voices.npz
     voices_json = {
-        "Charvi": {
-            "mode": "spk",
-            "meta": {"lang": "mr", "gender": "female"},
-            "prefix": None
-        }
+        "Charvi": {"mode": "named", "use_icl": False, "use_mem": False}
     }
     (assets_dir / "voices.json").write_text(json.dumps(voices_json, indent=2))
     files_sha["voices.json"] = _sha256((assets_dir / "voices.json").read_bytes())
 
-    voices_npz = {
-        "Charvi/ecapa": np.random.randn(ecapa_dim).astype(np.float32),
-        "Charvi/mem": np.random.randn(1, 1, d_mem).astype(np.float32),
-    }
-    np.savez(assets_dir / "voices.npz", **voices_npz)
-    files_sha["voices.npz"] = _sha256((assets_dir / "voices.npz").read_bytes())
 
     # 4. controls.json
     controls_json = {
         "text_frames_prior": {
             "mr": {"a": 4.0, "b": 0.5, "resid_p99": 10.0}
         },
+        "text": {"terminals": "।.!?;।॥", "fps": 12.5, "frame_s": 0.08, "chunk_s": 16.0},
         "guard": {
             "enabled": True,
             "dur_k": 2.2,
             "dur_margin_s": 1.2,
             "hard_cap": 1500,
-            "min_frac": 0.5
+            "dur_prior_coefs": {"mr": [1.0, 0.05, 0.03, 0.3, 0.3]},
+            "dur_prior_default": [1.0, 0.05, 0.03, 0.3, 0.3]
         },
         "sampling": {
             "q_serve": 16,
@@ -277,6 +274,8 @@ def make_tiny_assets(assets_dir: Path, aeos_bias: float = 0.0) -> Path:
         "shapes": {
             "d_model": d,
             "vocab": vocab,
+            "n_q": n_q,
+            "n_codes": n_codes,
             "n_layers": n_layers,
             "n_heads": n_heads,
             "head_dim": head_dim,

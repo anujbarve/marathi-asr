@@ -1,65 +1,56 @@
 from __future__ import annotations
 
 import re
+
 import numpy as np
 
-PRIOR_DEFAULT = {"a": 4.0, "b": 0.44, "resid_p99": 18.0}
-TERMINALS = "।॥.!?\n"
-FPS = 12.5
+# Port of maya3.guards (DurationPrior, text_feats) and scripts/s2_serve_controls.py (expected_frames, split_text).
+# The numbers come from controls.json, written by tools/maya_export/export_prompt_assets.py from upstream.
 PAUSE = re.compile(r"[,;:.!?।॥…\-]")
+PRIOR_DEFAULT = {"a": 2.0, "b": 0.72, "resid_p99": 90.0}  # scripts/s2_serve_controls.py
+FRAME_S = 0.08  # maya3.guards.FRAME_S (one frame = 80 ms of audio)
+
+
+def text_feats(t: str) -> np.ndarray:
+    letters = sum(1 for ch in t if ch.isalpha() or (0x900 <= ord(ch) <= 0xDFF))
+    latin = sum(1 for ch in t if ch.isascii() and ch.isalpha())
+    return np.array([1.0, letters - latin, latin, len(PAUSE.findall(t)), sum(ch.isdigit() for ch in t)])
 
 
 def expected_frames(prior: dict, lang: str, nchar: int) -> tuple[float, float]:
     p = prior.get(lang, PRIOR_DEFAULT)
-    return float(p["a"] + p["b"] * nchar), float(p["resid_p99"])
+    return p["a"] + p["b"] * nchar, p["resid_p99"]
 
 
-def min_frames(ef: float, min_frac: float = 0.5) -> int:
-    return max(4, int(min_frac * ef))
+def min_frames(ef: float) -> int:
+    return max(4, int(0.5 * ef))
 
 
-def _text_feats(t: str) -> np.ndarray:
-    letters = sum(1 for ch in t if ch.isalpha() or (0x900 <= ord(ch) <= 0xDFF))
-    latin = sum(1 for ch in t if ch.isascii() and ch.isalpha())
-    return np.array([1.0, letters - latin, latin, len(PAUSE.findall(t)), sum(ch.isdigit() for ch in t)], dtype=np.float32)
+def expected_seconds(text: str, lang: str, guard: dict) -> float:
+    coefs = guard["dur_prior_coefs"]
+    coef = np.asarray(coefs.get(lang, guard["dur_prior_default"]), dtype=np.float64)
+    return float(max(0.35, text_feats(text) @ coef))
 
 
 def frame_cap(text: str, lang: str, ef: float, er: float, controls: dict) -> int:
-    guard_cfg = controls.get("guard", {})
-    hard_cap = guard_cfg.get("hard_cap", 1500)
-    if not guard_cfg.get("enabled", True):
-        return hard_cap
-
-    # From upstream tts_quant_spike:
-    # loose = min(1500, int(2.0 * (ef + er) + 40))
-    # cap = loose
-    # if g.enabled:
-    #     cap = min(cap, max(int(ef * 0.5) + 8, dur.cap_frames(text, lang, g.dur_k, g.dur_margin_s)))
-    dur_k = float(guard_cfg.get("dur_k", 2.2))
-    dur_margin_s = float(guard_cfg.get("dur_margin_s", 1.2))
-
-    # Duration prior estimation
-    dur_prior_coefs = guard_cfg.get("dur_prior_coefs")
-    if dur_prior_coefs and lang in dur_prior_coefs:
-        coef = np.asarray(dur_prior_coefs[lang], dtype=np.float32)
-        exp_s = float(max(0.35, float(_text_feats(text) @ coef)))
-    else:
-        # Fallback to ef * 0.08 s
-        exp_s = float(max(0.35, ef * 0.08))
-
-    dur_cap = int((dur_k * exp_s + dur_margin_s) / 0.08)
-    loose = min(hard_cap, int(2.0 * (ef + er) + 40))
-    cap = min(loose, max(int(ef * 0.5) + 8, dur_cap))
-    return int(cap)
+    """Duration cap as in tools/maya_export/golden_light.py: min(loose, max(0.5*ef + 8, duration-prior cap))."""
+    guard = controls["guard"]
+    loose = min(int(guard["hard_cap"]), int(2.0 * (ef + er) + 40))
+    if not guard["enabled"]:
+        return loose
+    dur_cap = int((float(guard["dur_k"]) * expected_seconds(text, lang, guard)
+                   + float(guard["dur_margin_s"])) / FRAME_S)
+    return int(min(loose, max(int(ef * 0.5) + 8, dur_cap)))
 
 
-def split_text(text: str, lang: str, prior: dict, chunk_s: float = 12.0) -> list[str]:
+def split_text(text: str, lang: str, prior: dict, chunk_s: float = 12.0, *, fps: float = 12.5,
+               terminals: str = "।.!?;।॥") -> list[str]:
     """Split at sentence terminals into pieces of about chunk_s seconds (prior-estimated).
     Falls back to commas, then whitespace, for run-on text."""
     if chunk_s <= 0:
         return [text]
-    target = chunk_s * FPS
-    pieces = [p.strip() for p in re.split(rf"(?<=[{re.escape(TERMINALS)}])\s+", text) if p.strip()]
+    target = chunk_s * fps
+    pieces = [p.strip() for p in re.split(rf"(?<=[{re.escape(terminals)}])\s+", text) if p.strip()]
     out: list[str] = []
     cur = ""
     for p in pieces:
@@ -88,10 +79,12 @@ def split_text(text: str, lang: str, prior: dict, chunk_s: float = 12.0) -> list
                 cur = cand
         if cur:
             final.append(cur)
-    return final if final else [text]
+    return final
 
 
 class StopPolicy:
+    """The "controlled" stop rule of ServeSession.speak: argmax, tau and hazard tests, none before min_frames."""
+
     def __init__(self, min_frames: int, tau: float = 0.35, hazard: float = 0.6) -> None:
         self.min_frames = int(min_frames)
         self.tau = float(tau)
@@ -120,7 +113,7 @@ class StopPolicy:
 
 def sample_cb0(p: np.ndarray, noise: np.ndarray, aeos_class: int = 2048) -> int:
     """
-    aeos zeroed, Gumbel-max over the rest.
+    aeos zeroed and renormalised, then Gumbel-max over the rest (same distribution as upstream multinomial).
     """
     q = np.array(p, dtype=np.float32, copy=True)
     q[aeos_class] = 0.0

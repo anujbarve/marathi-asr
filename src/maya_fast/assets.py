@@ -62,30 +62,30 @@ class PromptAssets:
         self.manifest = load_manifest(self.assets_dir, verify=verify)
         self.shapes = self.manifest.get("shapes", {})
 
-        # Embeddings
+        from .embed import EmbeddingTable
+        from .prompt import AudioIn
+
         d_model = self.shapes.get("d_model", 2048)
         vocab = self.shapes.get("vocab", 151936)
-        embed_path = self.assets_dir / "embed_bf16.bin"
-        from .embed import EmbeddingTable
-        self.embed_table = EmbeddingTable(embed_path, rows=vocab, dim=d_model)
+        n_q = self.shapes.get("n_q", 16)
+        n_codes = self.shapes.get("n_codes", 2048)
+        self.embed_table = EmbeddingTable(self.assets_dir / "embed_bf16.bin", rows=vocab, dim=d_model)
+        audio_table = EmbeddingTable(self.assets_dir / "audio_in_bf16.bin", rows=n_q * n_codes, dim=d_model)
 
-        # Controls
-        controls_path = self.assets_dir / "controls.json"
-        with open(controls_path, "r", encoding="utf-8") as f:
+        # Controls (text_frames_prior, guard, sampling, text)
+        with open(self.assets_dir / "controls.json", "r", encoding="utf-8") as f:
             self.controls = json.load(f)
 
-        # Prompt weights
+        # Speaker anchor weights and audio input norm/aeos (fp32; the audio table is bf16 on disk)
         prompt_npz = np.load(self.assets_dir / "prompt.npz")
         self.prompt_params = {k: prompt_npz[k] for k in prompt_npz.files}
+        self.audio_in = AudioIn(audio_table, self.prompt_params["audio_in/aeos_in"],
+                                self.prompt_params["audio_in/norm"], n_q=n_q)
 
-        # Voices
-        voices_path = self.assets_dir / "voices.json"
-        with open(voices_path, "r", encoding="utf-8") as f:
+        # Voices: name -> {mode, use_icl, use_mem}
+        with open(self.assets_dir / "voices.json", "r", encoding="utf-8") as f:
             self.voices_info = json.load(f)
-        voices_npz = np.load(self.assets_dir / "voices.npz")
-        self.voices_arrays = {k: voices_npz[k] for k in voices_npz.files}
 
-        # Tokenizer
+        # Tokenizer (extended upstream tokenizer, fast format)
         from tokenizers import Tokenizer
-        tokenizer_path = self.assets_dir / "tokenizer.json"
-        self.tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        self.tokenizer = Tokenizer.from_file(str(self.assets_dir / "tokenizer.json"))

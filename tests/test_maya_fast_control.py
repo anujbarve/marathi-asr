@@ -1,6 +1,9 @@
+import json
 import unittest
+from pathlib import Path
 import numpy as np
 
+from src.maya_fast.assets import PromptAssets, default_assets_dir
 from src.maya_fast.control import (
     expected_frames,
     frame_cap,
@@ -24,7 +27,8 @@ class TestMayaFastControl(unittest.TestCase):
                 "dur_k": 2.2,
                 "dur_margin_s": 1.2,
                 "hard_cap": 1500,
-                "min_frac": 0.5,
+                "dur_prior_coefs": {"mr": [1.0, 0.05, 0.03, 0.3, 0.3]},
+                "dur_prior_default": [1.0, 0.05, 0.03, 0.3, 0.3],
             }
         }
         cap = frame_cap("नमस्कार", "mr", ef, er, controls)
@@ -86,6 +90,33 @@ class TestMayaFastControl(unittest.TestCase):
         # Even though aeos had 0.99, sample_cb0 masks aeos out, so token 10 must be chosen
         chosen = sample_cb0(p, noise, aeos_class=aeos_class)
         self.assertEqual(chosen, 10)
+
+
+GOLDEN = Path.home() / ".cache" / "maya_fast" / "golden"
+
+
+class TestMayaFastControlGolden(unittest.TestCase):
+    """Sentence controls (ef, er, cap, minimum, split_text) must equal the upstream values in light.json."""
+
+    @classmethod
+    def setUpClass(cls):
+        assets_dir = default_assets_dir()
+        if not (GOLDEN / "light.json").exists() or not (assets_dir / "manifest.json").exists():
+            raise unittest.SkipTest(f"goldens at {GOLDEN} or assets at {assets_dir} not found")
+        with open(GOLDEN / "light.json", "r", encoding="utf-8") as f:
+            cls.gj = json.load(f)
+        cls.controls = PromptAssets(assets_dir).controls
+
+    def test_controls_match_golden(self):
+        prior = self.controls["text_frames_prior"]
+        for s_id, item in self.gj["sentences"].items():
+            text = item["text"]
+            ef, er = expected_frames(prior, "mr", len(text))
+            self.assertAlmostEqual(ef, item["ef"], places=9, msg=s_id)
+            self.assertAlmostEqual(er, item["er"], places=9, msg=s_id)
+            self.assertEqual(frame_cap(text, "mr", ef, er, self.controls), item["cap"], s_id)
+            self.assertEqual(min_frames(ef), item["minimum"], s_id)
+            self.assertEqual(split_text(text, "mr", prior, chunk_s=16.0), item["split_text"], s_id)
 
 
 if __name__ == "__main__":

@@ -74,7 +74,7 @@ class MayaFast:
         mimi_path = self.assets_dir / "mimi_decoder.onnx"
         self.mimi = MimiDecoder(mimi_path, threads=self.threads)
 
-        self.audio_in = AudioIn(self.assets.prompt_params)
+        self.audio_in = self.assets.audio_in
 
     @property
     def voices(self) -> list[str]:
@@ -107,7 +107,7 @@ class MayaFast:
         top_k = int(sampling_cfg.get("top_k", 64))
         tau = float(sampling_cfg.get("tau", 0.35))
         hazard = float(sampling_cfg.get("hazard", 0.6))
-        aeos_class = int(self.shapes.get("vocab", 2048))
+        aeos_class = int(self.shapes.get("n_codes", 2048))
 
         # Split text into chunks
         c_s = 12.0 if chunk_s is None else chunk_s
@@ -115,13 +115,9 @@ class MayaFast:
 
         rng = np.random.default_rng(seed)
 
-        # Voice speaker memory for Depth
-        mem_key = f"{voice}/mem"
-        mem = self.assets.voices_arrays.get(mem_key)
-        if mem is None:
-            # If plain mode or no memory
-            d_mem = int(self.shapes.get("d_mem", 1024))
-            mem = np.zeros((1, 1, d_mem), dtype=np.float32)
+        # Speaker memory for Depth: named voices use a null memory (use_mem False)
+        d_mem = int(self.shapes.get("d_mem", 1024))
+        mem = np.zeros((1, 1, d_mem), dtype=np.float32)
 
         gen_codes: list[np.ndarray] = []
         reasons: list[str] = []

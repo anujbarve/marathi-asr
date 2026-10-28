@@ -1,0 +1,22 @@
+# maya-fast results
+
+Machine: Apple M-series Mac, 8 ORT threads, CPU EP.
+
+## Task 5: backbone (wo8, MatMulNBits int8, block 32, accuracy_level 4)
+
+Artifact: `backbone_wo8.onnx` + `backbone_wo8.data` (1.6 GB), exported 2026-10-28 by `tools/maya_export/export_backbone.py`.
+
+Speed gate (`Backbone.step`, T = 1, 200 steps each, median):
+
+| past_len | median ms | gate |
+|---|---|---|
+| 32 | 48.22 | - |
+| 256 | 58.00 | <= 35 ms: FAIL |
+| 768 | 82.35 | <= 1.25 x 32-median (60.3 ms): FAIL |
+
+Peak RSS during the run: 2945.8 MB (guard 4000 MB).
+
+Status: speed gate FAILED. Quality gate not run (needs `eval_teacher_forced.py`, not written).
+Per plan, stop and amend: the 32-token median already exceeds 35 ms, so the cost is weight bandwidth
+(1.6 GB of int8 weights read per token), not KV concat alone. The 768/32 ratio also misses (KV copy).
+Options for amendment: bits=4 weights (about half the bytes), or a revised speed gate.

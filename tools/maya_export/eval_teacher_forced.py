@@ -155,21 +155,40 @@ def depth(candidate: str) -> dict:
     mem_w = _Weights(shard_files(ckpt_paths()["ckpt"]))
     null_mem = mem_w.get("depth.null_mem").float().numpy().reshape(1, 1, 1024)
     build = work_dir() / "depth_build" / candidate
+    single = build / "depth_all.onnx"
     per_top1, per_kl = [], []
-    for level in range(1, DEPTH_LEVELS + 1):
-        sess = _sess(build / f"level_{level:02d}.onnx", threads=8)
-        hits, total, kl_sum = 0, 0, 0.0
+    if single.exists():
+        # one graph, all levels: run each file once and read the 15 level outputs
+        sess = _sess(single, threads=8)
+        outs = []
         for it in items:
             F = it["h"].shape[0]
-            mem = np.repeat(null_mem, F, axis=0)
-            got = sess.run(None, {"h": it["h"], "codes": it["codes"], "mem": mem})[0]
+            outs.append(sess.run(None, {"h": it["h"], "codes": it["codes"],
+                                        "mem": np.repeat(null_mem, F, axis=0)})[0])
+        del sess
+        levels = [(level, [o[:, level - 1] for o in outs]) for level in range(1, DEPTH_LEVELS + 1)]
+    else:
+        levels = None
+    for level in range(1, DEPTH_LEVELS + 1):
+        if levels is None:
+            sess = _sess(build / f"level_{level:02d}.onnx", threads=8)
+            got_per_item = []
+            for it in items:
+                F = it["h"].shape[0]
+                mem = np.repeat(null_mem, F, axis=0)
+                got_per_item.append(sess.run(None, {"h": it["h"], "codes": it["codes"], "mem": mem})[0])
+            del sess
+        else:
+            got_per_item = levels[level - 1][1]
+        hits, total, kl_sum = 0, 0, 0.0
+        for it, got in zip(items, got_per_item):
+            F = it["h"].shape[0]
             want = it["ref"][:, level - 1]
             hits += int((got.argmax(-1) == want.argmax(-1)).sum())
             total += F
             p = _softmax(want, TEMP)
             q = _softmax(got, TEMP)
             kl_sum += float(np.sum(p * (np.log(p + 1e-30) - np.log(q + 1e-30))))
-        del sess
         per_top1.append(hits / total)
         per_kl.append(kl_sum / total)
     passes = [t >= DEPTH_TOP1_GATE and k <= DEPTH_KL_GATE for t, k in zip(per_top1, per_kl)]
@@ -182,7 +201,7 @@ def depth(candidate: str) -> dict:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("target", choices=["backbone", "depth"])
-    ap.add_argument("--candidate", choices=["wo8", "wo8_fph", "fp32"], required=True)
+    ap.add_argument("--candidate", choices=["wo8", "wo8_fph", "fp32", "fp16"], required=True)
     a = ap.parse_args()
     res = backbone(a.candidate) if a.target == "backbone" else depth(a.candidate)
     print(json.dumps(res, indent=2))

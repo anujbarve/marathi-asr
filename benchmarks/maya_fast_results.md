@@ -80,3 +80,7 @@ Default kept.
 Memory, backbone wo8 + depth fp16 + Mimi loaded together (no inference): peak RSS 2671.6 MB. Under the 4 GB limit; inference adds KV and activations (not yet measured).
 
 Offline RTF estimate (amended target <= 4): backbone ~60-80 ms/token + depth 155 ms + Mimi ~1 ms per 80 ms frame, about 2.9 RTF. Not measured end to end; the engine is not wired to these graphs yet.
+
+### RAM limit change (user decision, 2026-10-28)
+
+Hard RSS limit raised from 4000 MB to 5000 MB. Target stays 3000 MB. Previous 4000 MB runs are unaffected; new guard runs use 5000 MB.

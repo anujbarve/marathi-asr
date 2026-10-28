@@ -1,3 +1,5 @@
 numpy>=2.0
 onnxruntime==1.31.*
 tokenizers>=0.22,<0.23
+psutil
+onnx

@@ -4,6 +4,7 @@ import tempfile
 import numpy as np
 
 from tests.fixtures.tiny_assets import make_tiny_assets
+from src.maya_fast.assets import default_assets_dir
 from src.maya_fast.codec import MimiDecoder
 
 
@@ -26,6 +27,18 @@ class TestMayaFastCodec(unittest.TestCase):
 
         self.assertEqual(wav.shape, (F * 1920,))
         self.assertEqual(wav.dtype, np.float32)
+
+
+class TestMayaFastCodecReal(unittest.TestCase):
+    def test_real_decoder_length(self):
+        path = default_assets_dir() / "mimi_decoder.onnx"
+        if not path.exists():
+            self.skipTest(f"real Mimi decoder not found at {path}")
+        mimi = MimiDecoder(path, threads=1)
+        codes = np.random.default_rng(0).integers(0, 2048, size=(16, 5), dtype=np.int64)
+        wav = mimi.decode(codes)
+        self.assertEqual(wav.shape, (5 * 1920,))
+        self.assertTrue(np.all(np.isfinite(wav)))
 
 
 if __name__ == "__main__":

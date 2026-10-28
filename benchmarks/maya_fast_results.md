@@ -36,3 +36,7 @@ Revised gate: report the speed numbers above; no pass/fail. Measured: 48.2 / 58.
 | mean KL (softmax(logits/0.7), nats) | 0.00336 | <= 0.01 | pass |
 
 Status: quality gate FAILED on top-1. Not relaxed. Next: find the source of top-1 misses (int8 weights vs. near-tie logits), then amend or change the quantization.
+
+### Waiver
+
+User accepted the backbone wo8 quality gate miss (top1 0.9677 < 0.99; KL 0.00336 passes) and asked to move on. Gate recorded as failed; waived by the user for proceeding to Task 6. Top-1 misses not investigated.

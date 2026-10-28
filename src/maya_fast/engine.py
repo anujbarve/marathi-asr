@@ -68,7 +68,7 @@ class MayaFast:
             config=self.shapes,
         )
 
-        depth_path = self.assets_dir / "depth_frame_wo8.onnx"
+        depth_path = self.assets_dir / "depth_frame_fp16.onnx"
         self.depth = Depth(depth_path, threads=self.threads)
 
         mimi_path = self.assets_dir / "mimi_decoder.onnx"
@@ -170,7 +170,7 @@ class MayaFast:
                 cb0 = sample_cb0(p, cb0_noise, aeos_class=aeos_class)
 
                 # 4. Depth frame
-                depth_noise = gumbel(rng, (15, int(self.shapes.get("vocab", 2048))))
+                depth_noise = gumbel(rng, (15, int(self.shapes.get("n_codes", 2048))))
                 t_d = time.perf_counter()
                 frame_codes = self.depth.frame(h, cb0, mem, depth_noise)
                 depth_time += time.perf_counter() - t_d

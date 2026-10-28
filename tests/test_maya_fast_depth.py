@@ -17,7 +17,7 @@ class TestMayaFastDepth(unittest.TestCase):
 
     def test_depth_runtime_shapes(self):
         # tiny assets: frame() returns 16 codes in [0, 2048), codes[0] == cb0
-        depth_path = self.assets_dir / "depth_frame_wo8.onnx"
+        depth_path = self.assets_dir / "depth_frame_fp16.onnx"
         depth = Depth(depth_path, threads=1)
 
         d = 16

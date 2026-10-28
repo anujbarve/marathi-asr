@@ -45,6 +45,8 @@ class Depth:
             mem = mem[None, :, :]
 
         noise = np.asarray(noise, dtype=np.float32)
+        if noise.ndim == 2:  # (15, n_codes) -> (1, 15, n_codes)
+            noise = noise[None]
 
         feed = {
             "h": h,

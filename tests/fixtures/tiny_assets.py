@@ -77,36 +77,34 @@ def _make_tiny_backbone_onnx(out_path: Path, d: int = 16, vocab: int = 64, n_lay
 
 
 def _make_tiny_depth_onnx(out_path: Path, d: int = 16, vocab: int = 64, d_mem: int = 16) -> None:
-    # DepthFrame:
+    # DepthFrame (batched, as the real sampled graph):
     # Inputs:
-    # h (1, 2048) -> (1, d)
-    # cb0 (1,) int64
-    # mem (1, R, 1024) -> (1, R, d_mem)
-    # noise (15, 2048) float32 -> (15, vocab)
+    # h (B, 2048) -> (B, d)
+    # cb0 (B,) int64
+    # mem (B, R, 1024) -> (B, R, d_mem)
+    # noise (B, 15, 2048) float32 -> (B, 15, vocab)
     # Output:
-    # codes (16,) int64
+    # codes (B, 16) int64
 
     inputs = [
-        helper.make_tensor_value_info("h", TensorProto.FLOAT, [1, d]),
-        helper.make_tensor_value_info("cb0", TensorProto.INT64, [1]),
-        helper.make_tensor_value_info("mem", TensorProto.FLOAT, [1, "R", d_mem]),
-        helper.make_tensor_value_info("noise", TensorProto.FLOAT, [15, vocab]),
+        helper.make_tensor_value_info("h", TensorProto.FLOAT, ["B", d]),
+        helper.make_tensor_value_info("cb0", TensorProto.INT64, ["B"]),
+        helper.make_tensor_value_info("mem", TensorProto.FLOAT, ["B", "R", d_mem]),
+        helper.make_tensor_value_info("noise", TensorProto.FLOAT, ["B", 15, vocab]),
     ]
     outputs = [
-        helper.make_tensor_value_info("codes", TensorProto.INT64, [16]),
+        helper.make_tensor_value_info("codes", TensorProto.INT64, ["B", 16]),
     ]
 
-    # Node:
-    # For tiny test, return codes: codes[0] = cb0[0], codes[1..15] = argmax(noise[i]) % vocab
-    # In ONNX:
-    # ArgMax(noise, axis=-1, keepdims=0) -> (15,)
-    # Concat([cb0, argmax_noise], axis=0) -> (16,)
+    # For tiny test: codes[:, 0] = cb0, codes[:, 1..15] = argmax(noise[:, i]) over the vocab.
+    initializers = [helper.make_tensor("unsq_axes", TensorProto.INT64, [1], [1])]
     nodes = [
         helper.make_node("ArgMax", ["noise"], ["deeper_codes"], axis=-1, keepdims=0),
-        helper.make_node("Concat", ["cb0", "deeper_codes"], ["codes"], axis=0),
+        helper.make_node("Unsqueeze", ["cb0", "unsq_axes"], ["cb0_col"]),
+        helper.make_node("Concat", ["cb0_col", "deeper_codes"], ["codes"], axis=1),
     ]
 
-    graph = helper.make_graph(nodes, "tiny_depth", inputs, outputs)
+    graph = helper.make_graph(nodes, "tiny_depth", inputs, outputs, initializers)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=10)
     onnx.save(model, str(out_path))
 
@@ -261,8 +259,8 @@ def make_tiny_assets(assets_dir: Path, aeos_bias: float = 0.0) -> Path:
 
     files_sha["backbone_wo8.onnx"] = _sha256((assets_dir / "backbone_wo8.onnx").read_bytes())
 
-    _make_tiny_depth_onnx(assets_dir / "depth_frame_wo8.onnx", d=d, vocab=vocab, d_mem=d_mem)
-    files_sha["depth_frame_wo8.onnx"] = _sha256((assets_dir / "depth_frame_wo8.onnx").read_bytes())
+    _make_tiny_depth_onnx(assets_dir / "depth_frame_fp16.onnx", d=d, vocab=vocab, d_mem=d_mem)
+    files_sha["depth_frame_fp16.onnx"] = _sha256((assets_dir / "depth_frame_fp16.onnx").read_bytes())
 
     _make_tiny_mimi_onnx(assets_dir / "mimi_decoder.onnx")
     files_sha["mimi_decoder.onnx"] = _sha256((assets_dir / "mimi_decoder.onnx").read_bytes())

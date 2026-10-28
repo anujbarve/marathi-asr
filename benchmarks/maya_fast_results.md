@@ -63,3 +63,8 @@ Peak RSS when all 15 level sessions are resident: 3743.8 MB. Over the 3000 MB ru
 Status: quality gate passes with fp32; speed gate and memory budget FAIL. The per-level design re-reads
 the group-8 and cross-attention weights for each of levels 9..15 (about 4 GB read per frame). The plan's
 single DepthFrame graph with shared group-8 KV is the design that reduces this; not built yet.
+
+### Amended targets (user decision)
+
+Speed: offline target, mean RTF <= 4 on this Mac. Real-time (RTF <= 1) is dropped. The 35 ms per-frame backbone and depth gates are superseded by this RTF target.
+Memory: unchanged, runtime peak RSS <= 3000 MB. Depth moves to fp16 storage (single shared-group graph) to meet it. Needs its own quality gate.

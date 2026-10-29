@@ -1,7 +1,8 @@
 # Backbone quantization sweep (teacher-forced gate vs fp32)
 
 Gate: top-1 >= 0.99 and mean KL <= 0.01 (75 files, 4272 frames). Tool: `tools/maya_export/quant_sweep_backbone.py`.
-Speed/RSS: runtime `maya_fast.backbone.Backbone`, ORT 1.26 system python, T=1 steps, 100 steps after a prefill of
+Machine: Apple M5 (arm64), 8 ORT threads (Backbone default min(8, cores)). Gate: ORT 1.31.1 (`.venv-tts`).
+Speed/RSS: runtime `maya_fast.backbone.Backbone`, ORT 1.26 system python (8 threads), T=1 steps, 100 steps after a prefill of
 `past_len` tokens, median ms/step. RSS = `ps` resident size right after load (before any step) and after the 100+100 steps.
 
 | tag | top-1 | KL | gate | RSS after load (MB) | RSS end (MB) | ms/step past32 | ms/step past256 |

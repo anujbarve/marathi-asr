@@ -106,3 +106,25 @@ MatMul kernel on x86, so an fp16-compute graph cannot run on the i5. Not built.
 - Fast int8 (acc 4) builds run at 66-80 ms/frame on the M5 (ISA-specific kernels, unmeasured on x86) but fail the gate at levels 1..8 and do not reach 1000 MB (1088-1303 MB).
 - Not tried, would need work outside ORT's stock kernels: an 8-bit fp32-compute kernel (custom op), or a
   per-tensor sensitivity search for acc 4 (which tensors of the private groups can stay int8).
+
+## Reproducing q8a1_kg8
+
+Command lines taken from the scratchpad build scripts (`depth_variants.sh` for the teacher-forced graph, `frame_bench.sh`
+for the sampled runtime graph) and confirmed by the build logs `build_q8a1_kg8.log` / `buildframe_q8a1_kg8.log`.
+Run from the repo root with `PYTHONPATH=.` and the `.venv-tts` python, each under
+`tools/memguard.py --rss-limit-mb 5000 --min-free-mb 5500 --`. `--bits 8 --block 32 --accuracy-level 1` are the defaults.
+
+```
+# teacher-forced graph (quality gate input)
+python -m tools.maya_export.quant_depth_frame \
+    --src ~/.cache/maya_fast/depth_build/fp16/depth_all.onnx \
+    --dst ~/.cache/maya_fast/depth_build/q8a1_kg8/depth_all.onnx --keep 'groups\.8\.'
+# sampled runtime graph (the shipped depth_frame_q8a1_kg8.onnx)
+python -m tools.maya_export.quant_depth_frame \
+    --src ~/.cache/maya_fast/depth_build/fp16/depth_frame_fp16.onnx \
+    --dst ~/.cache/maya_fast/depth_build/q8a1_kg8/depth_frame_q8a1_kg8.onnx --keep 'groups\.8\.'
+```
+
+Logged build stats (frame graph): 157 quantized weights, 386007040 quantized params, 283 MatMulNBits nodes,
+50102272 kept fp16 params, 535094272 data bytes. The gate was run with
+`python -m tools.maya_export.eval_teacher_forced depth --candidate q8a1_kg8`.

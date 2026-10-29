@@ -88,6 +88,7 @@ def plan(model: onnx.ModelProto, keep: re.Pattern | None):
         for i in n.input:
             cons[i].append(n)
     out = {}
+    unsupported = set()  # weights with at least one Cast use that cannot be converted
     drop = set()
     for n in g.node:
         if n.op_type != "Cast" or n.input[0] not in inits:
@@ -112,8 +113,13 @@ def plan(model: onnx.ModelProto, keep: re.Pattern | None):
             else:
                 ok = False
         if ok and uses:
-            out[t.name] = uses
+            out.setdefault(t.name, []).extend(uses)  # one weight may feed several Casts
             drop |= local_drop
+        else:
+            unsupported.add(t.name)
+    mixed = sorted(set(out) & unsupported)
+    if mixed:
+        raise ValueError(f"weights with both convertible and unconvertible Cast uses: {mixed}")
     return out, drop
 
 

@@ -13,7 +13,7 @@ from src.maya_fast.control import split_text
 
 class TestMayaFastEngine(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.assets_dir = make_tiny_assets(Path(self.temp_dir.name))
 
     def tearDown(self):
@@ -45,7 +45,7 @@ class TestMayaFastEngine(unittest.TestCase):
 
     def test_cap_stops_generation(self):
         # tiny assets built with an aeos logit bias of -100 -> reasons == ["cap"], frames == cap
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
             biased_assets_dir = make_tiny_assets(Path(td), aeos_bias=-100.0)
             engine = MayaFast(assets_dir=biased_assets_dir, threads=1)
             wav, metrics = engine.synthesize("t_1", voice="Charvi", seed=0)

@@ -24,7 +24,7 @@ Powered by **AI4Bharat IndicConformer CTC (Quantized INT8)** executed via **ONNX
 
 ### Prerequisites
 - macOS 12+ (Apple Silicon M-series or Intel)
-- Python 3.10+ (tested on Python 3.13)
+- Python 3.11+ (onnxruntime 1.31 has no Python 3.10 wheels; tested on 3.13)
 - `ffmpeg` (installed via `brew install ffmpeg`)
 
 ### Setup Virtual Environment

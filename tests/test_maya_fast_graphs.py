@@ -27,7 +27,7 @@ def _rewrite_manifest(assets_dir: Path, graphs: dict | None, rename: dict[str, s
 
 class TestGraphNames(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.assets_dir = make_tiny_assets(Path(self.tmp.name) / "v1")
 
     def tearDown(self):
@@ -88,7 +88,7 @@ class TestGraphNames(unittest.TestCase):
 
 class TestDeriveVariant(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         root = Path(self.tmp.name)
         self.src = make_tiny_assets(root / "v1")
         # A replacement depth graph with external data, as the real builds have.

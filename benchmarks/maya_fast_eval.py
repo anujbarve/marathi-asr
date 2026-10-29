@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import resource
 import subprocess
 import sys
 import time
@@ -41,7 +40,13 @@ def work_dir() -> Path:
 
 
 def max_rss_mb() -> float:
-    """Peak RSS of this process in MiB (ru_maxrss is bytes on macOS, KiB on Linux)."""
+    """Peak RSS of this process in MiB (ru_maxrss is bytes on macOS, KiB on Linux; peak working set on Windows)."""
+    if sys.platform == "win32":
+        import psutil
+
+        return psutil.Process().memory_info().peak_wset / (1024 * 1024)
+    import resource
+
     v = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return v / (1024 * 1024) if sys.platform == "darwin" else v / 1024
 

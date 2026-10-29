@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, macos-13, windows-latest]
-        python: ["3.10", "3.13"]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, macos-15-intel, windows-latest]
+        python: ["3.11", "3.13"]
 
     steps:
       - name: Check out repository

@@ -57,7 +57,7 @@ class TestAggregate(unittest.TestCase):
         self.assertIn("0.300", t)
 
     def test_limit_and_testset(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             p = os.path.join(d, "t.json")
             json.dump([{"id": str(i), "category": "c", "text": "x"} for i in range(5)], open(p, "w"))
             self.assertEqual(len(E.load_testset(p, 3)), 3)

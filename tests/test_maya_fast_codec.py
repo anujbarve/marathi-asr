@@ -10,7 +10,7 @@ from src.maya_fast.codec import MimiDecoder
 
 class TestMayaFastCodec(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.assets_dir = make_tiny_assets(Path(self.temp_dir.name))
 
     def tearDown(self):

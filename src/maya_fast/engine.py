@@ -91,6 +91,7 @@ class MayaFast:
         voice: str = "Charvi",
         seed: int = 0,
         chunk_s: float | None = None,
+        lang: str = "mr",
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """
         Synthesize text into 24 kHz float32 audio.
@@ -116,7 +117,7 @@ class MayaFast:
 
         # Split text into chunks
         c_s = 12.0 if chunk_s is None else chunk_s
-        chunks = split_text(text, "mr", prior, chunk_s=c_s)
+        chunks = split_text(text, lang, prior, chunk_s=c_s)
 
         rng = np.random.default_rng(seed)
 
@@ -138,10 +139,10 @@ class MayaFast:
             # Review focus #1: Each piece a fresh KV session
             self.backbone.reset()
 
-            prompt = build_prompt(chunk_text, voice, self.assets, lang="mr")
+            prompt = build_prompt(chunk_text, voice, self.assets, lang=lang)
 
-            ef, er = expected_frames(prior, "mr", len(chunk_text))
-            cap = frame_cap(chunk_text, "mr", ef, er, self.controls)
+            ef, er = expected_frames(prior, lang, len(chunk_text))
+            cap = frame_cap(chunk_text, lang, ef, er, self.controls)
             min_f = min_frames(ef)
             caps.append(cap)
             chunk_bound = prompt.n_prompt + cap

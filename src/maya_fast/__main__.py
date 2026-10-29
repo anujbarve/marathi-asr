@@ -15,13 +15,14 @@ def main() -> None:
     parser.add_argument("-o", "--out", type=str, default="out.wav", help="Output WAV path")
     parser.add_argument("--voice", type=str, default="Charvi", help="Voice name (default: Charvi)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
+    parser.add_argument("--lang", type=str, default="mr", help="Language tag: mr, hi, ... (default: mr)")
     parser.add_argument("--threads", type=int, default=None, help="ORT threads (default: min(8, cores))")
     parser.add_argument("--assets", type=str, default=None, help="Assets directory")
 
     args = parser.parse_args()
 
     engine = MayaFast(assets_dir=args.assets, threads=args.threads)
-    wav, metrics = engine.synthesize(args.text, voice=args.voice, seed=args.seed)
+    wav, metrics = engine.synthesize(args.text, voice=args.voice, seed=args.seed, lang=args.lang)
 
     # Convert float32 [-1.0, 1.0] to 16-bit PCM WAV using stdlib wave
     wav_clipped = np.clip(wav, -1.0, 1.0)

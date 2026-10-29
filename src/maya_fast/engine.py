@@ -60,16 +60,18 @@ class MayaFast:
         self.controls = self.assets.controls
         self.sampling_cfg = self.controls.get("sampling", {})
 
-        # Load models
+        # Load models. Depth first: its session peaks ~1 GB above steady state
+        # during graph optimization, so loading it before the backbone keeps
+        # that transient off the combined peak.
+        depth_path = self.assets_dir / "depth_frame_fp16.onnx"
+        self.depth = Depth(depth_path, threads=self.threads)
+
         backbone_path = self.assets_dir / "backbone_wo8.onnx"
         self.backbone = Backbone(
             backbone_path,
             threads=self.threads,
             config=self.shapes,
         )
-
-        depth_path = self.assets_dir / "depth_frame_fp16.onnx"
-        self.depth = Depth(depth_path, threads=self.threads)
 
         mimi_path = self.assets_dir / "mimi_decoder.onnx"
         self.mimi = MimiDecoder(mimi_path, threads=self.threads)

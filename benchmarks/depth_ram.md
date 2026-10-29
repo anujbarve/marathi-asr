@@ -3,7 +3,7 @@
 Target (plan Task 2): depth steady RSS <= 1000 MB, load spike <= 1500 MB, <= 80 ms/frame, teacher-forced gate
 (per level top-1 >= 0.98 and KL <= 0.02) on all 15 levels.
 
-**Result: no candidate meets all four targets.** Keep `depth_frame_fp16.onnx` for now. Details below.
+**Result: no candidate meets all four targets** (the fp16 baseline included: 66-99 ms/frame on the M5, 3 of 4 runs over 80 ms). Keep `depth_frame_fp16.onnx` for now: the only build passing the gate at near-target speed. Details below.
 
 Machine: Apple M5 (arm64), 16 GB. ORT 1.26.0 (runtime python) for RSS / speed / codes; ORT 1.31.1 (`.venv-tts`)
 for the teacher-forced gate. Every run under `tools/memguard.py`; swap 372 -> 364 MB over the session (no growth).
@@ -80,12 +80,13 @@ same slow path), q8a4, q4a1 (fail gate).
 fp16 ms/frame varied 66-99 between identical runs on this machine (another agent's jobs share it); compare
 candidates within the same row pair only.
 
-## Why int8 acc 1 is slow (and why it is the same on the i5)
+## Why int8 acc 1 is slow (M5-measured; i5 behaviour extrapolated from ORT source, unmeasured on x86)
 
 ORT MLAS has no 8-bit fp32-compute kernel on any CPU (`GetQNBitGemmVariant`: 8-bit -> CompInt8 or CompFp16 only).
 MatMulNBits 8-bit acc 1 runs `ComputeBUnpacked`: dequantize the whole B into an fp32 scratch buffer on every call,
 then SGEMM. Group 8 (7 uses/frame) and the cross blocks (15 uses/frame) are dequantized on every use, which is why
-keeping group 8 fp32 also cuts 346 -> 245 ms. This path is generic C++ (same on x86); on AVX2 the native kernels
+keeping group 8 fp32 also cuts 346 -> 245 ms. This path is generic C++, so the slowdown is expected on x86 too (extrapolated from ORT source, unmeasured on
+x86: all speed numbers here are from the M5); on AVX2 the native kernels
 are 8-bit CompInt8 (acc 4) and 4-bit CompFp32 (checked in onnxruntime main: `sqnbitgemm_kernel_avx2.cpp`).
 
 ## fp16 compute (plan Step 3): dropped
@@ -96,10 +97,12 @@ MatMul kernel on x86, so an fp16-compute graph cannot run on the i5. Not built.
 
 ## Recommendation
 
-- Keep `depth_frame_fp16.onnx` in the runtime (only build that meets speed + gate; 2.2 GB steady, 3.35 GB load peak).
+- Keep `depth_frame_fp16.onnx` in the runtime: the only build that passes the gate at near-target speed (66-99 ms/frame
+  on the M5, noisy; 3 of 4 runs over the 80 ms target; the 48.5 ms in the constraints file did not reproduce),
+  2.2 GB steady, 3.35 GB load peak.
 - Best RAM-and-quality build: `depth_build/q8a1_kg8/depth_frame_q8a1_kg8.onnx` (902 MB steady, no load spike, gate
-  pass, min top-1 0.9806) at 245 ms/frame: meets RAM and gate, fails speed by 3x. Use only if depth speed stops
+  pass, min top-1 0.9806) at 245 ms/frame: meets RAM and gate, fails speed by 3x (M5-measured; on the i5 extrapolated from ORT source, unmeasured on x86). Use only if depth speed stops
   mattering (e.g. a low-RAM mode).
-- Fast int8 (acc 4) builds meet speed but fail the gate at levels 1..8 and do not reach 1000 MB (1088-1303 MB).
+- Fast int8 (acc 4) builds run at 66-80 ms/frame on the M5 (ISA-specific kernels, unmeasured on x86) but fail the gate at levels 1..8 and do not reach 1000 MB (1088-1303 MB).
 - Not tried, would need work outside ORT's stock kernels: an 8-bit fp32-compute kernel (custom op), or a
   per-tensor sensitivity search for acc 4 (which tensors of the private groups can stay int8).

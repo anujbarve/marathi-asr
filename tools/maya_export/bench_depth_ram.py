@@ -3,7 +3,7 @@
 Session options match the runtime (maya_fast.ort_opts): intra_op threads, allow_spinning 0, no CPU arena,
 ORT_ENABLE_ALL. RSS sampled by a 2 ms background thread:
   load_rss_mb      RSS right after InferenceSession() returns
-  load_peak_mb     peak RSS during InferenceSession() (ru_maxrss; macOS reports bytes)
+  load_peak_mb     peak RSS during InferenceSession() (ru_maxrss: bytes on macOS, KiB on Linux)
   first5_peak_mb   peak RSS during the first 5 frames
   steady_rss_mb    RSS after 40 parity frames + 3 warm-up + 30 timed frames
   run_peak_mb      peak RSS over all frames after load
@@ -22,6 +22,7 @@ import json
 import os
 import resource
 import statistics
+import sys
 import threading
 import time
 
@@ -90,7 +91,9 @@ def main() -> None:
     sess = ort.InferenceSession(a.model, o, providers=["CPUExecutionProvider"])
     load_s = time.perf_counter() - t0
     # the sampler thread is starved while InferenceSession() holds the GIL: use the kernel high-water mark
-    load_peak = max(s.window(), resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20)  # bytes on macOS
+    maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    maxrss_mb = maxrss / 2**20 if sys.platform == "darwin" else maxrss / 2**10  # macOS: bytes; Linux: KiB
+    load_peak = max(s.window(), maxrss_mb)
     load_rss = proc.memory_info().rss / 2**20
 
     codes = []

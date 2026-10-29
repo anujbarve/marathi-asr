@@ -27,6 +27,8 @@ N_LAYERS = EB.N_LAYERS
 
 
 def tag(bits: int, block: int, algo: str, asym: bool, acc: int) -> str:
+    if algo == "hqq":  # HQQWeightOnlyQuantConfig has no symmetric/accuracy_level knobs: do not claim them in the tag
+        return f"b{bits}_blk{block}_hqq_default"
     return f"b{bits}_blk{block}_{algo}_{'asym' if asym else 'sym'}_acc{acc}"
 
 
@@ -43,8 +45,8 @@ def make_quantizer(model, bits: int, block: int, algo: str, asym: bool, acc: int
         # algo_config overrides the quantizer's own bits/accuracy_level, so they must be set on the config
         cfg = DefaultWeightOnlyQuantConfig(block_size=block, is_symmetric=not asym, accuracy_level=acc, bits=bits)
     else:
+        # HQQ ignores is_symmetric and accuracy_level (rejected on the CLI); defaults are untested here
         cfg = HQQWeightOnlyQuantConfig(bits=bits, block_size=block)
-        cfg.accuracy_level = acc
     return MatMulNBitsQuantizer(model, bits=bits, block_size=block, is_symmetric=not asym, accuracy_level=acc,
                                 algo_config=cfg)
 
@@ -95,10 +97,14 @@ if __name__ == "__main__":
     ap.add_argument("--block", type=int, choices=(32, 64, 128), required=True)
     ap.add_argument("--algo", choices=("rtn", "hqq"), default="rtn")
     ap.add_argument("--asym", action="store_true")
-    ap.add_argument("--accuracy-level", type=int, choices=(0, 1, 2, 3, 4), default=4)
+    ap.add_argument("--accuracy-level", type=int, choices=(0, 1, 2, 3, 4), default=None,
+                    help="rtn only (default 4); not supported for hqq")
     ap.add_argument("--onnx", type=Path, default=None, help="eval an existing merged graph instead of the tag's")
     a = ap.parse_args()
-    kw = dict(bits=a.bits, block=a.block, algo=a.algo, asym=a.asym, acc=a.accuracy_level)
+    if a.algo == "hqq" and (a.asym or a.accuracy_level is not None):
+        ap.error("--algo hqq ignores --asym and --accuracy-level (HQQWeightOnlyQuantConfig has no such options); omit them")
+    kw = dict(bits=a.bits, block=a.block, algo=a.algo, asym=a.asym,
+              acc=4 if a.accuracy_level is None else a.accuracy_level)
     if a.mode == "build":
         build(**kw)
     else:

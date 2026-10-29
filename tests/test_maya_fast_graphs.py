@@ -50,6 +50,16 @@ class TestGraphNames(unittest.TestCase):
         with self.assertRaises(AssetError):
             graph_names({"graphs": {"vocoder": "x.onnx"}})
 
+    def test_graph_not_in_files_map_raises(self):
+        with self.assertRaises(AssetError):
+            graph_names({"files": {"a.onnx": "x"}, "graphs": {"depth": "b.onnx"}})
+        m = json.loads((self.assets_dir / "manifest.json").read_text())
+        m["graphs"] = {"depth": "not_listed.onnx"}
+        (self.assets_dir / "manifest.json").write_text(json.dumps(m))
+        for verify in (True, False):
+            with self.assertRaises(AssetError):
+                load_manifest(self.assets_dir, verify=verify)
+
     def test_engine_loads_renamed_graphs(self):
         ref, _ = MayaFast(assets_dir=self.assets_dir, threads=1).synthesize("t_1 t_2", seed=3)
         _rewrite_manifest(
@@ -93,6 +103,7 @@ class TestDeriveVariant(unittest.TestCase):
         self.new_depth = build / "depth_frame_new.onnx"
         onnx.save(m, str(self.new_depth), save_as_external_data=True,
                   location="depth_frame_new.onnx.data", size_threshold=1024)
+        (self.src / "backbone_fp32.extra").write_bytes(b"unhashed extra")
         self.before = {p.name: p.read_bytes() for p in self.src.iterdir()}
 
     def tearDown(self):
@@ -107,6 +118,9 @@ class TestDeriveVariant(unittest.TestCase):
         self.assertNotIn("depth_frame_fp16.onnx", m["files"])
         self.assertFalse((dst / "depth_frame_fp16.onnx").exists())
         self.assertEqual(external_data_files(dst / "depth_frame_new.onnx"), ["depth_frame_new.onnx.data"])
+        # unhashed extras in the source are not linked
+        self.assertFalse((dst / "backbone_fp32.extra").exists())
+        self.assertEqual(set(p.name for p in dst.iterdir()), set(m["files"]) | {"manifest.json"})
         # hard links, not copies
         self.assertEqual(os.stat(dst / "prompt.npz").st_ino, os.stat(self.src / "prompt.npz").st_ino)
         self.assertEqual(os.stat(dst / "depth_frame_new.onnx").st_ino, os.stat(self.new_depth).st_ino)

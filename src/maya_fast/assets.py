@@ -28,6 +28,11 @@ def graph_names(manifest: dict[str, Any]) -> dict[str, str]:
     unknown = set(graphs) - set(DEFAULT_GRAPHS)
     if unknown:
         raise AssetError(f"Unknown graph role(s) in manifest: {sorted(unknown)}")
+    files = manifest.get("files")
+    if graphs and files is not None:
+        for role, name in graphs.items():
+            if name not in files:
+                raise AssetError(f"Manifest graph {role!r} names {name!r}, which is not in the manifest files map")
     return {**DEFAULT_GRAPHS, **graphs}
 
 
@@ -89,6 +94,7 @@ def load_manifest(assets_dir: str | Path, verify: bool = True) -> dict[str, Any]
             if actual_sha != expected_sha:
                 raise AssetError(f"Asset sha256 mismatch for file: {name}")
 
+    graph_names(manifest)  # raises AssetError on unknown roles or graphs outside the files map
     return manifest
 
 

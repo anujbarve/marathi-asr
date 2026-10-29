@@ -50,6 +50,33 @@ def assign_sides(n: int, rng: random.Random) -> list[str]:
     return [rng.choice("AB") for _ in range(n)]
 
 
+TARGET_RMS = 0.05
+PEAK_LIMIT = 0.98
+
+
+def normalize_rms(wav: np.ndarray, target: float = TARGET_RMS, peak_limit: float = PEAK_LIMIT) -> np.ndarray:
+    """Scale to a common RMS so loudness cannot unblind a pair; scale is capped so the peak stays <= peak_limit."""
+    wav = np.asarray(wav, dtype=np.float32)
+    rms = float(np.sqrt(np.mean(wav.astype(np.float64) ** 2))) if wav.size else 0.0
+    peak = float(np.max(np.abs(wav))) if wav.size else 0.0
+    if rms < 1e-9:
+        return wav
+    gain = min(target / rms, peak_limit / peak) if peak > 0 else 1.0
+    return (wav * gain).astype(np.float32)
+
+
+def renormalize_dir(d: Path) -> int:
+    """Re-normalize every pair_*_{A,B}.wav in d in place (no re-synthesis). Returns files rewritten."""
+    import soundfile as sf
+
+    n = 0
+    for f in sorted(Path(d).glob("pair_*_[AB].wav")):
+        x, sr = sf.read(f, dtype="float32")
+        sf.write(f, normalize_rms(x), sr)
+        n += 1
+    return n
+
+
 def score_answers(key: dict, answers: dict) -> dict:
     pref = tie = ref = 0
     for pid, ans in answers.items():
@@ -81,6 +108,7 @@ def generate(args) -> None:
         pid = f"{i:02d}"
         ref = np.load(Path(args.ref_dir) / f"{it['id']}_s0.npz")["wav"].astype(np.float32)
         cand, _ = eng.synthesize(it["text"], voice=args.voice, seed=0)
+        cand, ref = normalize_rms(cand), normalize_rms(ref)
         a, b = (cand, ref) if cand_side == "A" else (ref, cand)
         sf.write(out / f"pair_{pid}_A.wav", a, 24000)
         sf.write(out / f"pair_{pid}_B.wav", b, 24000)
@@ -99,8 +127,12 @@ def main(argv=None) -> int:
     ap.add_argument("--threads", type=int)
     ap.add_argument("--shuffle-seed", type=int, default=12345)
     ap.add_argument("--out-dir", help="where pairs and key.json go (default <work>/listen)")
+    ap.add_argument("--renormalize", metavar="DIR", help="re-normalize existing pair wavs in DIR in place and exit")
     ap.add_argument("--score", help="answers.json to score against <out-dir>/key.json")
     args = ap.parse_args(argv)
+    if args.renormalize:
+        print(f"renormalized {renormalize_dir(Path(args.renormalize))} files")
+        return 0
     if args.score:
         out = Path(args.out_dir) if args.out_dir else work_dir() / "listen"
         key = json.loads((out / "key.json").read_text())

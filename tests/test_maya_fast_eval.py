@@ -84,6 +84,25 @@ class TestListen(unittest.TestCase):
         with self.assertRaises(ValueError):
             L.score_answers(key, {"01": "C"})
 
+    def test_normalize_rms_equalizes_loudness(self):
+        import numpy as np
+        t = np.linspace(0, 1, 24000, dtype=np.float32)
+        quiet = 0.02 * np.sin(2 * np.pi * 220 * t)
+        loud = 0.5 * np.sin(2 * np.pi * 330 * t)
+        rms = lambda x: float(np.sqrt(np.mean(x.astype(np.float64) ** 2)))
+        a, b = L.normalize_rms(quiet), L.normalize_rms(loud)
+        self.assertAlmostEqual(rms(a), L.TARGET_RMS, places=4)
+        self.assertAlmostEqual(rms(b), L.TARGET_RMS, places=4)
+        self.assertEqual(a.dtype, np.float32)
+        self.assertEqual(L.normalize_rms(np.zeros(10, np.float32)).tolist(), [0.0] * 10)
+
+    def test_normalize_rms_caps_peak(self):
+        import numpy as np
+        x = np.zeros(1000, np.float32)
+        x[0] = 0.9  # very peaky: needed gain would clip
+        y = L.normalize_rms(x)
+        self.assertLessEqual(float(np.max(np.abs(y))), L.PEAK_LIMIT + 1e-6)
+
 
 if __name__ == "__main__":
     unittest.main()

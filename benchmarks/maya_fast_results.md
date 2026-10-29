@@ -115,11 +115,17 @@ v1 0.8110, v2-lowram 0.8069, reference 0.8202. Candidate - reference: v1 -0.0092
 | gate | v1 | v2-lowram |
 |---|---|---|
 | CER <= reference + 0.01 | PASS (0.137 vs 0.157) | PASS (0.122 vs 0.157) |
+| plan gate: v2 CER <= v1 CER + 0.01 | - | PASS (0.12161 <= 0.13657 + 0.01 = 0.14657) |
 | peak RSS <= 3000 MB target | FAIL (4466.5) | FAIL (3822.8) |
 | peak RSS <= 5000 MB hard limit | PASS | PASS |
 | mean RTF <= 4 (offline target) | PASS (2.206) | FAIL (5.460) |
 | mean RTF <= 1 (real time) | FAIL | FAIL |
 | speaker cosine >= reference - 0.02 | PASS (-0.0092) | PASS (-0.0134) |
+
+The plan gate "v2 CER <= v1 CER + 0.01" uses the exact values from `~/.cache/maya_fast/eval/t5-v1-full/results.json`
+(v1 0.13657) and `t5-v2lowram-full/results.json` (v2-lowram 0.12161). A plain "v2" set was not built: no backbone or
+depth replacement passed its gate other than the RAM-motivated depth swap (v2-lowram), so a speed-motivated v2
+would equal v1.
 
 Neither set meets all gates. v1 meets quality and speed but not the RAM target; v2-lowram saves about 640 MB
 peak and meets quality, but misses both the RAM target and the RTF target. Lower CER than the reference is
@@ -137,3 +143,8 @@ Listening pairs (unrated): `~/.cache/maya_fast/listen/v2-lowram/` and `~/.cache/
 (10 pairs each vs reference, seed 0, key in `key.json`).
 
 Run dirs: `~/.cache/maya_fast/eval/{t5-v1-full,t5-v2lowram-full,t5-v1-t4-s0,t5-v2lowram-t4-s0,t5-ort126-v1-l3,t5-ort126-v2lowram-l3}`.
+
+### Controller e2e run (ORT 1.26)
+
+Controller end-to-end run, 2026-10-29, v1 assets, 2 sentences, 8 threads, ORT 1.26: memguard peak RSS 4486.9 MB,
+RTF 0.94 / 0.92 (cited from the controller's run; no separate run dir). This is the source of the README "about 0.9" v1 row.

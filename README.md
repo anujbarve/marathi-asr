@@ -144,21 +144,23 @@ Options:
 - `--assets`: Directory containing assets (default: `~/.cache/maya_fast/assets/v1`).
 
 ### Performance & Measured Metrics
-Machine: Apple M5, 8 ORT threads, ORT 1.26, measured 2026-10-29. The Intel i5 8th-gen U-series target has not been measured yet.
+Machine: Apple M5, 8 ORT threads (ORT version per row), measured 2026-10-29. The Intel i5 8th-gen U-series target has not been measured yet.
 
-| Asset set | Peak RSS | RTF |
-|---|---|---|
-| v1 (current) | about 4.5 GB (smoke eval peak 4559 MB) | about 0.93 to 1.04 (smoke eval mean 1.038) |
-| v2-lowram (M5, 8 threads, ORT 1.31, full test set, 3 seeds) | 3823 MB (memguard peak) | mean 5.460 |
-| v1 (M5, 8 threads, ORT 1.31, full test set, 3 seeds) | 4467 MB (memguard peak) | mean 2.206 |
+| Asset set | Run | ORT | Peak RSS | RTF |
+|---|---|---|---|---|
+| v1 | controller e2e run, 2 sentences | 1.26 | 4486.9 MB (memguard) | 0.94 / 0.92 |
+| v1 | smoke eval, 3 items, seed 0 | 1.31 | 4559 MB | mean 1.038 |
+| v1 | full test set, 3 seeds | 1.31 | 4467 MB (memguard) | mean 2.206 |
+| v2-lowram | full test set, 3 seeds | 1.31 | 3823 MB (memguard) | mean 5.460 |
 
-The two rows above are from one later run (2026-10-29, `benchmarks/maya_fast_results.md`); the machine was
-about 2x slower than in the smoke run, cause unknown. Neither set meets the 3000 MB RAM target. v2-lowram
-(`~/.cache/maya_fast/assets/v2-lowram`, built with `tools/make_asset_variant.py`, select with `--assets`) uses about 640 MB less RAM but misses the
-offline speed target (RTF 4). Both pass the CER gate against the upstream reference.
+The two v1 runs at the top (RTF about 0.9 to 1.0) are earlier than the full-test-set v1 run (RTF 2.206; see
+`benchmarks/maya_fast_results.md`). The machine was about 2x slower in the later run, cause unknown. Neither set
+meets the 3000 MB RAM target. v2-lowram (`~/.cache/maya_fast/assets/v2-lowram`, built with
+`tools/make_asset_variant.py`, select with `--assets`) uses about 640 MB less RAM but misses the offline speed
+target (RTF 4). Both pass the CER gate against the upstream reference.
 
 ### Evaluation Scripts
-`benchmarks/maya_fast_eval.py`, `maya_fast_listen.py` and `maya_fast_spk.py` use `benchmarks/tts_testset_mr.json` by default. They need extra dependencies that are not in `requirements-fast.txt`: the ASR scripts need `sherpa_onnx` and `soxr` (the ASR environment from this repository's `.venv`), and `maya_fast_spk.py` needs a torch environment with `speechbrain`.
+`benchmarks/maya_fast_eval.py`, `maya_fast_listen.py` and `maya_fast_spk.py` use `benchmarks/tts_testset_mr.json` by default. They need extra dependencies that are not in `requirements-fast.txt`: the ASR scripts need `sherpa_onnx` and `soxr` (the ASR environment is the marathi-helper repository's venv, `/Users/anujbarve/Documents/marathi-helper/.venv`), and `maya_fast_spk.py` needs a torch environment with `speechbrain`.
 
 ### Licenses
 - Maya2 model weights: Apache-2.0.

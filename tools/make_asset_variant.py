@@ -1,4 +1,4 @@
-"""Derive an asset set from an existing one: hard-link every file, swap some graphs, rehash.
+"""Derive an asset set from an existing one: hard-link the manifest files, swap some graphs, rehash.
 
   python3 tools/make_asset_variant.py --src ~/.cache/maya_fast/assets/v1 \
       --dst ~/.cache/maya_fast/assets/v2-lowram \
@@ -8,7 +8,14 @@ Each ``--graph role=path`` hard-links ``path`` (and its external-data files, rea
 from the ONNX ``location`` fields, which must sit beside it) into the new set
 under the same file names, drops the old graph of that role (and its data files)
 and records the new name in the manifest ``graphs`` key. The source set is never
-modified. No weights are loaded (only the ONNX protobuf header, without external
+modified. Only files listed in the source manifest ``files`` map (plus the
+replacement graph files) are linked; unhashed extras in the source directory
+(e.g. ``backbone_fp32.*``) are not carried over.
+
+Hard links share inodes with the source: rewriting a source file in place (for
+example ``onnx.save_model`` over an existing ``.onnx``) changes the variant
+too. The manifest sha256 check then fails loudly at load time. Write new
+files instead of overwriting old ones. No weights are loaded (only the ONNX protobuf header, without external
 data).
 """
 from __future__ import annotations
@@ -65,9 +72,9 @@ def derive(src: Path, dst: Path, replace: dict[str, Path]) -> dict:
 
     dst.mkdir(parents=True)
     names = [n for n in manifest["files"] if n not in drop]
-    for f in sorted(src.iterdir()):
-        if f.is_file() and f.name != "manifest.json" and f.name not in drop and f.name not in add:
-            os.link(f, dst / f.name)
+    for n in names:
+        if n not in add:
+            os.link(src / n, dst / n)
     for name, path in add.items():
         os.link(path, dst / name)
         names.append(name)

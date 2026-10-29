@@ -63,17 +63,20 @@ class MayaFast:
         # Load models. Depth first: its session peaks ~1 GB above steady state
         # during graph optimization, so loading it before the backbone keeps
         # that transient off the combined peak.
-        depth_path = self.assets_dir / "depth_frame_fp16.onnx"
+        # Graph file names come from the manifest ("graphs"), defaulting to the
+        # v1 names (see assets.DEFAULT_GRAPHS).
+        self.graphs = self.assets.graphs
+        depth_path = self.assets_dir / self.graphs["depth"]
         self.depth = Depth(depth_path, threads=self.threads)
 
-        backbone_path = self.assets_dir / "backbone_wo8.onnx"
+        backbone_path = self.assets_dir / self.graphs["backbone"]
         self.backbone = Backbone(
             backbone_path,
             threads=self.threads,
             config=self.shapes,
         )
 
-        mimi_path = self.assets_dir / "mimi_decoder.onnx"
+        mimi_path = self.assets_dir / self.graphs["mimi"]
         self.mimi = MimiDecoder(mimi_path, threads=self.threads)
 
         self.audio_in = self.assets.audio_in

@@ -72,7 +72,7 @@ def generate(args) -> None:
     from src.maya_fast.engine import MayaFast
 
     items = pick_sentences(json.loads(Path(args.testset).read_text(encoding="utf-8")))
-    out = work_dir() / "listen"
+    out = Path(args.out_dir) if args.out_dir else work_dir() / "listen"
     out.mkdir(parents=True, exist_ok=True)
     sides = assign_sides(len(items), random.Random(args.shuffle_seed))
     eng = MayaFast(assets_dir=args.assets, threads=args.threads)
@@ -98,10 +98,12 @@ def main(argv=None) -> int:
     ap.add_argument("--voice", default="Charvi")
     ap.add_argument("--threads", type=int)
     ap.add_argument("--shuffle-seed", type=int, default=12345)
-    ap.add_argument("--score", help="answers.json to score against listen/key.json")
+    ap.add_argument("--out-dir", help="where pairs and key.json go (default <work>/listen)")
+    ap.add_argument("--score", help="answers.json to score against <out-dir>/key.json")
     args = ap.parse_args(argv)
     if args.score:
-        key = json.loads((work_dir() / "listen" / "key.json").read_text())
+        out = Path(args.out_dir) if args.out_dir else work_dir() / "listen"
+        key = json.loads((out / "key.json").read_text())
         r = score_answers(key, json.loads(Path(args.score).read_text()))
         print(json.dumps(r, indent=1))
         print("PASS" if r["rate"] >= 0.45 else "FAIL", f"(rate {r['rate']:.2f}, gate 0.45)")

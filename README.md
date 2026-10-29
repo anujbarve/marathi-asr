@@ -108,16 +108,20 @@ python3 -m unittest tests/test_pipeline.py
 
 ## 6. Maya-Fast TTS
 
-Maya-Fast is a lightweight, torch-free ONNX Runtime TTS engine that synthesizes fluent Marathi speech in real time under 3 GB RAM on CPU.
+Maya-Fast is a lightweight, torch-free ONNX Runtime TTS engine that synthesizes Marathi speech on CPU. The 3 GB RAM target and real-time speed are not yet met by the current v1 asset set (see measured numbers below).
 
 ### Installation
 For runtime inference only, install the lightweight dependencies (no PyTorch required):
 ```bash
 pip install -r requirements-fast.txt
 ```
+`requirements-fast.txt` holds numpy, onnxruntime, tokenizers, plus `psutil` (the engine reads RSS with it) and `onnx` (the unit tests build tiny graphs). No torch. Run the runtime tests with:
+```bash
+python -m unittest discover -s tests -p "test_maya_fast_*.py"
+```
 
 ### One-Time Asset Export
-Model export requires the export environment (`.venv-tts` with PyTorch, Transformers, and `maya3`):
+Model export requires the export environment (`.venv-tts` with PyTorch, Transformers, and `maya3`). The `tools/maya_export` scripts live on the `feat/maya-fast-export` branch:
 ```bash
 # Export versioned assets into ~/.cache/maya_fast/assets/v1
 .venv-tts/bin/python -m tools.maya_export.export_prompt_assets
@@ -140,8 +144,17 @@ Options:
 - `--assets`: Directory containing assets (default: `~/.cache/maya_fast/assets/v1`).
 
 ### Performance & Measured Metrics
-- **Runtime Memory:** Peak RSS ≤ 3000 MB across all test sentences without triggering swap.
-- **Speed:** Mean RTF ≤ 1.0 on Apple Silicon M5 (8 threads) with per-frame decode under 80 ms budget. On Intel i5 8th-gen U-series (CPU-only), runs within the 3 GB RAM limit without swap.
+Machine: Apple M5, 8 ORT threads, ORT 1.26, measured 2026-10-29. The Intel i5 8th-gen U-series target has not been measured yet.
+
+| Asset set | Peak RSS | RTF |
+|---|---|---|
+| v1 (current) | about 4.5 GB (smoke eval peak 4559 MB) | about 0.93 to 1.04 (smoke eval mean 1.038) |
+| v2 | TBD | TBD |
+
+The v1 peak RSS is above the 3000 MB target. The target is not met yet; v2 numbers will replace the TBD cells once measured.
+
+### Evaluation Scripts
+`benchmarks/maya_fast_eval.py`, `maya_fast_listen.py` and `maya_fast_spk.py` use `benchmarks/tts_testset_mr.json` by default. They need extra dependencies that are not in `requirements-fast.txt`: the ASR scripts need `sherpa_onnx` and `soxr` (the ASR environment from this repository's `.venv`), and `maya_fast_spk.py` needs a torch environment with `speechbrain`.
 
 ### Licenses
 - Maya2 model weights: Apache-2.0.

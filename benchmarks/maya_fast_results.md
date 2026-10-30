@@ -148,3 +148,40 @@ Run dirs: `~/.cache/maya_fast/eval/{t5-v1-full,t5-v2lowram-full,t5-v1-t4-s0,t5-v
 
 Controller end-to-end run, 2026-10-29, v1 assets, 2 sentences, 8 threads, ORT 1.26: memguard peak RSS 4486.9 MB,
 RTF 0.94 / 0.92 (cited from the controller's run; no separate run dir). This is the source of the README "about 0.9" v1 row.
+
+---
+
+## 2026-10-30: Voice Cloning, Multilingual & Emotion Synthesis, Listening Webapp
+
+Machine: Apple M5 (macOS), 8 ORT threads, CPU EP. All runs executed under `tools/memguard.py` (swap growth = 0 MB).
+
+### 1. In-Context Voice Cloning (`tools/clone_voice_fast.py` & `tools/record_and_clone.py`)
+Architecture:
+- Reference Audio: 6.0s microphone sample (`my_sample_recording.wav`).
+- Speaker Vector: 192-dimensional ECAPA embedding via `speechbrain/spkrec-ecapa-voxceleb`.
+- Acoustic Codes: Discrete codebook tokens $(32, 75)$ via Kyutai Mimi encoder.
+- Conditioning: In-context prefix via `V5Builder` and `PackerV2`; speaker memory $(1, 1024)$ via `Depth.spk_memory`.
+- Inference: Executed entirely through Maya-Fast ONNX Backbone + Depth + Mimi decoder (no fallback to built-in personas).
+
+| Metric | Measured Value | Notes |
+|---|---|---|
+| Target Text | *"नमस्कार! हा माझा स्वतःचा आवाज आहे आणि मॉडेल आता माझ्या आवाजात बोलत आहे."* | Real Marathi test sentence |
+| Audio Duration | 7.36s | Output WAV at 24 kHz |
+| Synthesis Time | 38.46s | Fast ONNX CPU execution |
+| Real-Time Factor (RTF) | 5.23 | Within offline envelope |
+| Peak RSS | 4269.2 MB | Passed `< 5000 MB` guard limit; swap delta: 0 MB |
+| ASR Intelligibility (IndicConformer) | *"नमस्कार हा माझा स्वतःचा आवाज आहे आणि मॉडेल आता माझ्या आवाजात बोलत आहे"* | **100.0% word accuracy** |
+
+### 2. Emotion & Language Synthesis Runs
+Tested upstream Maya 2 Native emotion markers and Hindi cross-lingual synthesis:
+
+| Test Case | Input Text | Peak RSS | RTF | Audio File |
+|---|---|---|---|---|
+| Emotion `[laughs]` | *"अरे वा! [laughs] हे तर खूपच छान झालं."* | 3894 MB | 4.46 | `emo_laugh_test.wav` |
+| Hindi (`hi`) | *"नमस्ते, आप कैसे हैं?"* | 4480 MB | 1.97 | `hindi_test.wav` |
+| Marathi (`mr`) | *"नमस्कार"* | 4044 MB | 2.83 | `marathi_test.wav` |
+
+### 3. Blind Listening Test Suite (`tools/build_listen_page.py` & `listening_test.html`)
+- Extracted 10 blind A/B pairs across `v1` vs `v2-lowram` from `~/.cache/maya_fast/listen/`.
+- Embedded audio as inline base64 into a self-contained browser application [listening_test.html](file:///Users/anujbarve/Documents/marathi-helper/listening_test.html).
+- Interactive voting (Prefer A / Prefer B / Equal) with automated real-time scoring against the $\ge 45\%$ preference acceptance gate.

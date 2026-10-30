@@ -201,7 +201,8 @@ def depth(candidate: str) -> dict:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("target", choices=["backbone", "depth"])
-    ap.add_argument("--candidate", choices=["wo8", "wo8_fph", "fp32", "fp16"], required=True)
+    ap.add_argument("--candidate", required=True,
+                    help="build tag: depth_build/<tag>/depth_all.onnx (depth) or assets/v1/backbone_<tag>.onnx")
     a = ap.parse_args()
     res = backbone(a.candidate) if a.target == "backbone" else depth(a.candidate)
     print(json.dumps(res, indent=2))

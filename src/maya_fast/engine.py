@@ -60,18 +60,23 @@ class MayaFast:
         self.controls = self.assets.controls
         self.sampling_cfg = self.controls.get("sampling", {})
 
-        # Load models
-        backbone_path = self.assets_dir / "backbone_wo8.onnx"
+        # Load models. Depth first: its session peaks ~1 GB above steady state
+        # during graph optimization, so loading it before the backbone keeps
+        # that transient off the combined peak.
+        # Graph file names come from the manifest ("graphs"), defaulting to the
+        # v1 names (see assets.DEFAULT_GRAPHS).
+        self.graphs = self.assets.graphs
+        depth_path = self.assets_dir / self.graphs["depth"]
+        self.depth = Depth(depth_path, threads=self.threads)
+
+        backbone_path = self.assets_dir / self.graphs["backbone"]
         self.backbone = Backbone(
             backbone_path,
             threads=self.threads,
             config=self.shapes,
         )
 
-        depth_path = self.assets_dir / "depth_frame_fp16.onnx"
-        self.depth = Depth(depth_path, threads=self.threads)
-
-        mimi_path = self.assets_dir / "mimi_decoder.onnx"
+        mimi_path = self.assets_dir / self.graphs["mimi"]
         self.mimi = MimiDecoder(mimi_path, threads=self.threads)
 
         self.audio_in = self.assets.audio_in
@@ -86,6 +91,7 @@ class MayaFast:
         voice: str = "Charvi",
         seed: int = 0,
         chunk_s: float | None = None,
+        lang: str = "mr",
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """
         Synthesize text into 24 kHz float32 audio.
@@ -111,7 +117,7 @@ class MayaFast:
 
         # Split text into chunks
         c_s = 12.0 if chunk_s is None else chunk_s
-        chunks = split_text(text, "mr", prior, chunk_s=c_s)
+        chunks = split_text(text, lang, prior, chunk_s=c_s)
 
         rng = np.random.default_rng(seed)
 
@@ -133,10 +139,10 @@ class MayaFast:
             # Review focus #1: Each piece a fresh KV session
             self.backbone.reset()
 
-            prompt = build_prompt(chunk_text, voice, self.assets, lang="mr")
+            prompt = build_prompt(chunk_text, voice, self.assets, lang=lang)
 
-            ef, er = expected_frames(prior, "mr", len(chunk_text))
-            cap = frame_cap(chunk_text, "mr", ef, er, self.controls)
+            ef, er = expected_frames(prior, lang, len(chunk_text))
+            cap = frame_cap(chunk_text, lang, ef, er, self.controls)
             min_f = min_frames(ef)
             caps.append(cap)
             chunk_bound = prompt.n_prompt + cap

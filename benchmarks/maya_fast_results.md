@@ -84,3 +84,67 @@ Offline RTF estimate (amended target <= 4): backbone ~60-80 ms/token + depth 155
 ### RAM limit change (user decision, 2026-10-28)
 
 Hard RSS limit raised from 4000 MB to 5000 MB. Target stays 3000 MB. Previous 4000 MB runs are unaffected; new guard runs use 5000 MB.
+
+## 2026-10-29: end-to-end gates, asset sets v1 and v2-lowram (finish plan, Task 5)
+
+Machine: Apple M5 (10 cores), CPU EP. TTS + ASR via `benchmarks/maya_fast_eval.py` run with the ASR venv
+(ORT 1.31.0). Full test set `benchmarks/tts_testset_mr.json` (25 sentences, 5 categories), voice Charvi,
+seeds 0 1 2 (75 utterances per set), default threads (8). Every run under
+`tools/memguard.py --rss-limit-mb 5000 --min-free-mb 5500`; swap delta 0 MB (v1 full: -8 MB). Reference =
+upstream PyTorch corpus `golden/ref` (same ids and seeds), scored by the same ASR.
+
+Asset sets:
+- **v1**: `assets/v1` (backbone `backbone_wo8.onnx`, depth `depth_frame_fp16.onnx`). Unchanged.
+- **v2-lowram**: `assets/v2-lowram`, hard links of v1 with the depth graph swapped for
+  `depth_frame_q8a1_kg8.onnx` (int8 block 32, accuracy_level 1, group 8 fp16; teacher-forced gate pass, min
+  top-1 0.9806). Manifest `graphs: {"depth": "depth_frame_q8a1_kg8.onnx"}`, built by
+  `tools/make_asset_variant.py`. Backbone unchanged (no quantized backbone passed its gate).
+
+| set | threads / seeds | CER (ref) | CER - ref | peak RSS MB (memguard / ru_maxrss) | RTF mean (max) | backbone / depth / mimi ms per frame |
+|---|---|---|---|---|---|---|
+| v1 | 8 / 0,1,2 | 0.137 (0.147) | -0.010 | 4466.5 / 4500 | 2.206 (2.704) | 53.4 / 117.2 / 2.8 |
+| v2-lowram | 8 / 0,1,2 | 0.122 (0.147) | -0.025 | 3822.8 / 3884 | 5.460 (6.265) | 38.5 / 394.2 / 2.4 |
+| v1 | 4 / 0 | 0.133 (0.145) | -0.012 | 4459.4 / 4458 | 2.072 (2.316) | 50.9 / 110.0 / 3.0 |
+| v2-lowram | 4 / 0 | 0.119 (0.145) | -0.026 | 3812.8 / 3812 | 6.123 (6.518) | 37.9 / 447.4 / 2.5 |
+
+Speaker similarity (`benchmarks/maya_fast_spk.py`, ECAPA, target = reference-corpus centroid, full runs, n=75):
+v1 0.8110, v2-lowram 0.8069, reference 0.8202. Candidate - reference: v1 -0.0092, v2-lowram -0.0134 (gate >= -0.02).
+
+### Gates
+
+| gate | v1 | v2-lowram |
+|---|---|---|
+| CER <= reference + 0.01 | PASS (0.137 vs 0.157) | PASS (0.122 vs 0.157) |
+| plan gate: v2 CER <= v1 CER + 0.01 | - | PASS (0.12161 <= 0.13657 + 0.01 = 0.14657) |
+| peak RSS <= 3000 MB target | FAIL (4466.5) | FAIL (3822.8) |
+| peak RSS <= 5000 MB hard limit | PASS | PASS |
+| mean RTF <= 4 (offline target) | PASS (2.206) | FAIL (5.460) |
+| mean RTF <= 1 (real time) | FAIL | FAIL |
+| speaker cosine >= reference - 0.02 | PASS (-0.0092) | PASS (-0.0134) |
+
+The plan gate "v2 CER <= v1 CER + 0.01" uses the exact values from `~/.cache/maya_fast/eval/t5-v1-full/results.json`
+(v1 0.13657) and `t5-v2lowram-full/results.json` (v2-lowram 0.12161). A plain "v2" set was not built: no backbone or
+depth replacement passed its gate other than the RAM-motivated depth swap (v2-lowram), so a speed-motivated v2
+would equal v1.
+
+Neither set meets all gates. v1 meets quality and speed but not the RAM target; v2-lowram saves about 640 MB
+peak and meets quality, but misses both the RAM target and the RTF target. Lower CER than the reference is
+ASR noise on 75 utterances, not a quality gain.
+
+### Speed note
+
+RTF on this run is about 2x the 2026-10-29 smoke run (v1 RTF 1.038, 25.6 / 54.8 ms per frame). Not the ORT
+version: a TTS-only rerun of the first 3 items, seed 0, with ORT 1.26 (system python) gave v1 RTF 2.22 / 2.08
+/ 2.08 (53.4 / 108.3 ms per frame) and v2-lowram 5.79 / 5.64 / 5.57 (35.2 / 412.8 ms per frame), the same as
+ORT 1.31. Machine on AC, no thermal warning recorded; the cause of the slowdown versus the smoke run is not
+known. In e2e the q8a1_kg8 depth costs 394-447 ms per frame, not the 245 ms of the Task 2 isolated bench.
+
+Listening pairs (unrated): `~/.cache/maya_fast/listen/v2-lowram/` and `~/.cache/maya_fast/listen/v1/`
+(10 pairs each vs reference, seed 0, key in `key.json`).
+
+Run dirs: `~/.cache/maya_fast/eval/{t5-v1-full,t5-v2lowram-full,t5-v1-t4-s0,t5-v2lowram-t4-s0,t5-ort126-v1-l3,t5-ort126-v2lowram-l3}`.
+
+### Controller e2e run (ORT 1.26)
+
+Controller end-to-end run, 2026-10-29, v1 assets, 2 sentences, 8 threads, ORT 1.26: memguard peak RSS 4486.9 MB,
+RTF 0.94 / 0.92 (cited from the controller's run; no separate run dir). This is the source of the README "about 0.9" v1 row.

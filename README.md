@@ -24,7 +24,7 @@ Powered by **AI4Bharat IndicConformer CTC (Quantized INT8)** executed via **ONNX
 
 ### Prerequisites
 - macOS 12+ (Apple Silicon M-series or Intel)
-- Python 3.10+ (tested on Python 3.13)
+- Python 3.11+ (onnxruntime 1.31 has no Python 3.10 wheels; tested on 3.13)
 - `ffmpeg` (installed via `brew install ffmpeg`)
 
 ### Setup Virtual Environment
@@ -108,16 +108,20 @@ python3 -m unittest tests/test_pipeline.py
 
 ## 6. Maya-Fast TTS
 
-Maya-Fast is a lightweight, torch-free ONNX Runtime TTS engine that synthesizes fluent Marathi speech in real time under 3 GB RAM on CPU.
+Maya-Fast is a lightweight, torch-free ONNX Runtime TTS engine that synthesizes Marathi speech on CPU. The 3 GB RAM target and real-time speed are not yet met by the current v1 asset set (see measured numbers below).
 
 ### Installation
 For runtime inference only, install the lightweight dependencies (no PyTorch required):
 ```bash
 pip install -r requirements-fast.txt
 ```
+`requirements-fast.txt` holds numpy, onnxruntime, tokenizers, plus `psutil` (the engine reads RSS with it) and `onnx` (the unit tests build tiny graphs). No torch. Run the runtime tests with:
+```bash
+python -m unittest discover -s tests -p "test_maya_fast_*.py"
+```
 
 ### One-Time Asset Export
-Model export requires the export environment (`.venv-tts` with PyTorch, Transformers, and `maya3`):
+Model export requires the export environment (`.venv-tts` with PyTorch, Transformers, and `maya3`). The `tools/maya_export` scripts live on the `feat/maya-fast-export` branch:
 ```bash
 # Export versioned assets into ~/.cache/maya_fast/assets/v1
 .venv-tts/bin/python -m tools.maya_export.export_prompt_assets
@@ -140,8 +144,23 @@ Options:
 - `--assets`: Directory containing assets (default: `~/.cache/maya_fast/assets/v1`).
 
 ### Performance & Measured Metrics
-- **Runtime Memory:** Peak RSS ≤ 3000 MB across all test sentences without triggering swap.
-- **Speed:** Mean RTF ≤ 1.0 on Apple Silicon M5 (8 threads) with per-frame decode under 80 ms budget. On Intel i5 8th-gen U-series (CPU-only), runs within the 3 GB RAM limit without swap.
+Machine: Apple M5, 8 ORT threads (ORT version per row), measured 2026-10-29. The Intel i5 8th-gen U-series target has not been measured yet.
+
+| Asset set | Run | ORT | Peak RSS | RTF |
+|---|---|---|---|---|
+| v1 | controller e2e run, 2 sentences | 1.26 | 4486.9 MB (memguard) | 0.94 / 0.92 |
+| v1 | smoke eval, 3 items, seed 0 | 1.31 | 4559 MB | mean 1.038 |
+| v1 | full test set, 3 seeds | 1.31 | 4467 MB (memguard) | mean 2.206 |
+| v2-lowram | full test set, 3 seeds | 1.31 | 3823 MB (memguard) | mean 5.460 |
+
+The two v1 runs at the top (RTF about 0.9 to 1.0) are earlier than the full-test-set v1 run (RTF 2.206; see
+`benchmarks/maya_fast_results.md`). The machine was about 2x slower in the later run, cause unknown. Neither set
+meets the 3000 MB RAM target. v2-lowram (`~/.cache/maya_fast/assets/v2-lowram`, built with
+`tools/make_asset_variant.py`, select with `--assets`) uses about 640 MB less RAM but misses the offline speed
+target (RTF 4). Both pass the CER gate against the upstream reference.
+
+### Evaluation Scripts
+`benchmarks/maya_fast_eval.py`, `maya_fast_listen.py` and `maya_fast_spk.py` use `benchmarks/tts_testset_mr.json` by default. They need extra dependencies that are not in `requirements-fast.txt`: the ASR scripts need `sherpa_onnx` and `soxr` (the ASR environment is the marathi-helper repository's venv, `/Users/anujbarve/Documents/marathi-helper/.venv`), and `maya_fast_spk.py` needs a torch environment with `speechbrain`.
 
 ### Licenses
 - Maya2 model weights: Apache-2.0.

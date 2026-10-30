@@ -14,7 +14,7 @@ TOL = 1e-5
 
 class TestMayaFastPromptTiny(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.assets_dir = make_tiny_assets(Path(self.temp_dir.name))
         self.assets = PromptAssets(self.assets_dir)
 

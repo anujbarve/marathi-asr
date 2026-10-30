@@ -12,6 +12,47 @@ class AssetError(Exception):
     pass
 
 
+# Graph file names inside an asset set. A manifest may override any of them
+# under its "graphs" key (e.g. a low-RAM set with a different depth graph);
+# v1 manifests have no "graphs" key and use these names.
+DEFAULT_GRAPHS = {
+    "backbone": "backbone_wo8.onnx",
+    "depth": "depth_frame_fp16.onnx",
+    "mimi": "mimi_decoder.onnx",
+}
+
+
+def graph_names(manifest: dict[str, Any]) -> dict[str, str]:
+    """Graph file names for this asset set: DEFAULT_GRAPHS updated by manifest["graphs"]."""
+    graphs = manifest.get("graphs") or {}
+    unknown = set(graphs) - set(DEFAULT_GRAPHS)
+    if unknown:
+        raise AssetError(f"Unknown graph role(s) in manifest: {sorted(unknown)}")
+    files = manifest.get("files")
+    if graphs and files is not None:
+        for role, name in graphs.items():
+            if name not in files:
+                raise AssetError(f"Manifest graph {role!r} names {name!r}, which is not in the manifest files map")
+    return {**DEFAULT_GRAPHS, **graphs}
+
+
+def write_manifest(assets_dir: str | Path, names: list[str], shapes: dict[str, Any],
+                   graphs: dict[str, str] | None = None, version: int = 1) -> dict[str, Any]:
+    """Hash every named file in assets_dir and write manifest.json next to them
+    (same format as the export branch's tools/maya_export/manifest.py, plus "graphs")."""
+    assets_dir = Path(assets_dir)
+    manifest: dict[str, Any] = {
+        "version": version,
+        "files": {name: compute_file_sha256(assets_dir / name) for name in names},
+        "shapes": shapes,
+    }
+    if graphs:
+        manifest["graphs"] = dict(graphs)
+    with open(assets_dir / "manifest.json", "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+    return manifest
+
+
 def default_work_dir() -> Path:
     env = os.environ.get("MAYA_FAST_WORK")
     if env:
@@ -53,6 +94,7 @@ def load_manifest(assets_dir: str | Path, verify: bool = True) -> dict[str, Any]
             if actual_sha != expected_sha:
                 raise AssetError(f"Asset sha256 mismatch for file: {name}")
 
+    graph_names(manifest)  # raises AssetError on unknown roles or graphs outside the files map
     return manifest
 
 
@@ -61,6 +103,7 @@ class PromptAssets:
         self.assets_dir = Path(assets_dir)
         self.manifest = load_manifest(self.assets_dir, verify=verify)
         self.shapes = self.manifest.get("shapes", {})
+        self.graphs = graph_names(self.manifest)
 
         from .embed import EmbeddingTable
         from .prompt import AudioIn

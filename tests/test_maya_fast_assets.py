@@ -10,7 +10,7 @@ from src.maya_fast.embed import EmbeddingTable
 
 class TestMayaFastAssets(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.assets_dir = make_tiny_assets(Path(self.temp_dir.name))
 
     def tearDown(self):
@@ -34,7 +34,7 @@ class TestMayaFastAssets(unittest.TestCase):
 
     def test_bf16_lookup_exact(self):
         # write 3 known float32 values that are exact in bf16, look up -> equal
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
             p = Path(td) / "test_embed.bin"
             # 1.0, -2.5, 0.125 are exactly representable in bf16
             vals = np.array([[1.0, -2.5, 0.125], [0.0, 4.0, -0.5]], dtype=np.float32)

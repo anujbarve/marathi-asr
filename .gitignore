@@ -13,6 +13,10 @@ __pycache__/
 # Audio/large local cache
 .cache/
 benchmarks/audio/
+*.wav
+
+# Claude / Agent worktrees
+.claude/
 
 # OS artifacts
 .DS_Store
